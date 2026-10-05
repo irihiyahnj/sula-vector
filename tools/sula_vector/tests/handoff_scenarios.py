@@ -47,7 +47,7 @@ def scenario(parent: Path, name: str, rel: str, size: int) -> dict:
     reason = append_fragment(fragments, "decision", {"kind": "decision", "summary": "Release only after approval"},
                              "The client signs off each delivery before it ships.").stem
     sheet = parent / f"{name}-sheet.md"
-    sheet.write_text(f"## Delivery\n- Ship {rel} only after the client approves it [{reason.split("--")[0]}]\n", encoding="utf-8")
+    sheet.write_text(f"## Delivery\n- Ship {rel} only after the client approves it [{reason.split('--')[0]}]\n", encoding="utf-8")
     run(root, "rules.py", ".", "set", "--from", str(sheet), "--why", "first rule sheet", "--refs", reason)
 
     check = f"from pathlib import Path; assert Path({rel!r}).open('rb').read(8) == b'approved'"
