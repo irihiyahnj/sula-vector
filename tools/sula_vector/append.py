@@ -39,7 +39,15 @@ def frontmatter_lines(fields: dict[str, object]) -> list[str]:
 
 
 def fragment_text(fields: dict[str, object], body: str) -> str:
-    return "---\n" + "\n".join(frontmatter_lines(fields)) + "\n---\n" + body.strip() + "\n"
+    text = "---\n" + "\n".join(frontmatter_lines(fields)) + "\n---\n" + body.strip() + "\n"
+    try:
+        text.encode("utf-8")
+    except UnicodeEncodeError as exc:
+        # Arguments arrive with undecodable bytes when a shell splits a
+        # multibyte character, e.g. `$VAR：` in a non-UTF-8 locale.
+        raise ValueError(f"text is not valid UTF-8 near {text[max(0, exc.start - 20):exc.start]!r}; "
+                         "check how the shell passed it, or pass it through stdin") from None
+    return text
 
 
 def publish(target: Path, text: str) -> bool:

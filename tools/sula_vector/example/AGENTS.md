@@ -9,11 +9,8 @@ Run from the repo root:
 ```bash
 python3 tools/sula_vector/render.py tools/sula_vector/example --for-agent
 python3 tools/sula_vector/render.py tools/sula_vector/example --view goals
-python3 tools/sula_vector/render.py tools/sula_vector/example --view progress
-python3 tools/sula_vector/render.py tools/sula_vector/example --view decay
-python3 tools/sula_vector/render.py tools/sula_vector/example --view unexplained
-python3 tools/sula_vector/render.py tools/sula_vector/example --view family --family hospital-acme-intake
-python3 tools/sula_vector/render.py tools/sula_vector/example --view thread --thread chief-of-staff
+python3 tools/sula_vector/render.py tools/sula_vector/example --view journal
+python3 tools/sula_vector/rules.py tools/sula_vector/example show
 ```
 
 See `../AGENTS.md` for the full convention agents should follow.

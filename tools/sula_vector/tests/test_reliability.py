@@ -17,9 +17,7 @@ TOOLS = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(TOOLS))
 from append import append_fragment, publish
 from capture import CaptureError, capture_graph, fold_witnessed, hash_file, scan_tree, tree_digest
-from render import (Fragment, focus_ids, judgment_gap, load_fragments, load_report,
-                    render_for_agent, verification_status, view_doctor, view_goals,
-                    witnessed_paths)
+from render import Fragment, load_fragments, load_report, render_for_agent, view_doctor, view_goals
 
 
 def skill(name):
@@ -82,10 +80,9 @@ class TestImmutablePublication(ProjectCase):
 
     def test_same_second_verification_results_both_survive(self):
         gid = self.add("goal", verifier_ref="shell: true")
-        verifier = skill("verifier-shell")
-        with patch.object(verifier, "now_iso", return_value="2026-09-05T00:00:00Z"):
-            one = verifier.write_verification_fact(self.frags, gid, "false", False, "first")
-            two = verifier.write_verification_fact(self.frags, gid, "true", True, "second")
+        fields = {"kind": "verification-fact", "refs": [gid]}
+        one = append_fragment(self.frags, "verification-fact", {**fields, "passed": False}, "first", stamp="2026-09-05T00:00:00Z")
+        two = append_fragment(self.frags, "verification-fact", {**fields, "passed": True}, "second", stamp="2026-09-05T00:00:00Z")
         self.assertNotEqual(one, two)
         self.assertIn("first", one.read_text())
         self.assertIn("second", two.read_text())
@@ -104,40 +101,6 @@ class TestImmutablePublication(ProjectCase):
         self.assertEqual([f.body for f in load_fragments(self.frags)], ["earlier", "later"])
 
 
-class TestEvidenceRelations(ProjectCase):
-    def test_missing_explanation_cannot_clear_gap(self):
-        wid = self.add("witness", files_changed=1, explained_by=["missing"])
-        frags, problems = load_report(self.frags)
-        self.assertEqual([f.id for f in judgment_gap(frags)], [wid])
-        self.assertIn("dangling-ref", view_doctor(frags, problems)["by_code"])
-
-    def test_evidence_cannot_impersonate_a_judgment(self):
-        wid = self.add("witness", files_changed=1)
-        self.add("fact", explains=[wid])
-        report = view_doctor(*load_report(self.frags))
-        self.assertIn("invalid-explanation", report["by_code"])
-        self.assertIn("unexplained-change", report["by_code"])
-
-    def test_note_rejects_symbolic_explanation_and_wrong_lane(self):
-        wid = self.add("witness", files_changed=1)
-        for args in [("--kind", "decision", "--explains", "family:missing"),
-                     ("--kind", "fact", "--explains", wid)]:
-            result = self.run_tool("note.py", str(self.root), *args, "why")
-            self.assertEqual(result.returncode, 2, result.stdout)
-        self.assertEqual(len(load_fragments(self.frags)), 1)
-
-    def test_relationship_repair_is_append_only(self):
-        wid = self.add("witness", files_changed=1)
-        bad = self.add("fact", explains=[wid])
-        self.add("correction", supersedes=[bad], explains=[wid])
-        self.assertTrue(view_doctor(*load_report(self.frags))["ok"])
-
-    def test_revised_decision_still_explains_its_historical_change(self):
-        wid = self.add("witness", files_changed=1)
-        old = self.add("decision", "why it changed then", explains=[wid])
-        self.add("correction", "choose a different direction now", supersedes=[old])
-        self.assertEqual(judgment_gap(load_fragments(self.frags)), [])
-
 
 class TestProjectionConsistency(ProjectCase):
     def test_display_filters_preserve_goal_status(self):
@@ -154,10 +117,6 @@ class TestProjectionConsistency(ProjectCase):
         self.assertEqual(rows["in_force"], [])
         self.assertEqual(rows["retired"][0]["id"], old)
 
-    def test_filtered_witness_keeps_its_explanation(self):
-        wid = self.add("witness", files_changed=1)
-        self.add("decision", explains=[wid])
-        self.assertEqual(self.render("--view", "unexplained", "--kind", "witness"), [])
 
     def test_until_is_historical_while_since_is_display_only(self):
         goal = append_fragment(self.frags, "goal", {"kind": "goal", "verifier_ref": "shell:true"}, "goal", stamp="2026-01-01T00:00:00Z")
@@ -167,17 +126,15 @@ class TestProjectionConsistency(ProjectCase):
 
 
 class TestContentCapture(ProjectCase):
-    def test_whitespace_paths_round_trip_and_decay(self):
-        from render import view_decay
+    def test_whitespace_paths_round_trip(self):
         path = self.root / ' \tquoted" name.txt'
         path.write_text("one")
-        self.add("decision", "subject", governs=[path.name])
         self.capture()
+        self.assertIn(path.name, fold_witnessed(load_fragments(self.frags))[0])
         self.assertIn("no change", self.capture().stdout)
         path.unlink()
-        self.add("decision", "remove subject")
         self.capture()
-        self.assertEqual(view_decay(load_fragments(self.frags))[0]["gone"], [path.name])
+        self.assertNotIn(path.name, fold_witnessed(load_fragments(self.frags))[0])
 
     def test_large_same_size_edit_is_observed(self):
         path = self.root / "master.mp4"
@@ -211,7 +168,6 @@ class TestContentCapture(ProjectCase):
         base = self.add("witness", baseline=True, capture_format="2")
         self.add("witness", capture_format="2", capture_parents=[base], baseline=True)
         self.add("witness", capture_format="2", capture_parents=[base], baseline=True)
-        self.assertIn("capture-fork", view_doctor(*load_report(self.frags))["by_code"])
         blocked = self.run_tool("skills/witness.py", "--project-root", str(self.root))
         self.assertEqual(blocked.returncode, 2)
         reconciled = self.run_tool("skills/witness.py", "--project-root", str(self.root), "--reconcile")
@@ -220,7 +176,8 @@ class TestContentCapture(ProjectCase):
 
     def test_missing_capture_ancestor_blocks(self):
         self.add("witness", capture_format="2", capture_parents=["missing"], baseline=True)
-        self.assertIn("capture-ancestry", view_doctor(*load_report(self.frags))["by_code"])
+        blocked = self.run_tool("skills/witness.py", "--project-root", str(self.root))
+        self.assertEqual(blocked.returncode, 2)
 
     def test_capture_ancestry_outvotes_clock_skew(self):
         base = append_fragment(self.frags, "witness", {"kind": "witness", "capture_format": "2"}, "+ a 1 " + json.dumps("x"), stamp="2026-09-05T01:00:00Z")
@@ -245,8 +202,6 @@ class TestContentCapture(ProjectCase):
         append_fragment(self.frags, "witness", {"kind": "witness", "capture_format": "2", "capture_parents": [base.stem]}, "+ b 1 " + json.dumps("x"), stamp="2026-09-05T10:01:00Z")
         tree, count = fold_witnessed(load_fragments(self.frags))
         self.assertIn('"file.txt"', tree)
-        present, removed = witnessed_paths(load_fragments(self.frags))
-        self.assertEqual(present, {"x", '"file.txt"'})
         self.assertEqual(count, 2)
 
     def test_json_quoted_filename_decodes_in_new_records(self):
@@ -254,8 +209,6 @@ class TestContentCapture(ProjectCase):
         append_fragment(self.frags, "witness", {"kind": "witness", "capture_format": "2"}, "+ a 1 " + json.dumps("x") + "\n~ b 1 " + quoted, stamp="2026-09-05T10:00:00Z")
         tree, count = fold_witnessed(load_fragments(self.frags))
         self.assertIn('say "hi".txt', tree)
-        present, removed = witnessed_paths(load_fragments(self.frags))
-        self.assertEqual(present, {"x", 'say "hi".txt'})
         self.assertEqual(count, 1)
 
     def test_malformed_json_path_raises_capture_error(self):
@@ -264,101 +217,6 @@ class TestContentCapture(ProjectCase):
             fold_witnessed(load_fragments(self.frags))
 
 
-class TestVersionedVerification(ProjectCase):
-    def test_conflicting_simultaneous_results_do_not_select_an_arbitrary_pass(self):
-        gid = self.add("goal", verifier_ref="shell: true")
-        for passed in (True, False):
-            append_fragment(self.frags, "verification", {"kind": "verification-fact", "refs": [gid], "passed": passed},
-                            "result", stamp="2026-09-05T00:00:00Z")
-        self.assertFalse(view_goals(load_fragments(self.frags))[0]["met"])
-
-    def test_note_supports_explicit_multiple_inputs(self):
-        result = self.run_tool("note.py", str(self.root), "--kind", "goal", "--verifier", "shell: true",
-                               "--verify-path", "delivery", "--verify-path", "checks.py", "verify")
-        self.assertEqual(result.returncode, 0, result.stderr)
-        self.assertEqual(load_fragments(self.frags)[0].id_list("verification_paths"), ["delivery", "checks.py"])
-
-    def verify(self):
-        result = self.run_tool("skills/verifier-shell.py", "--project-root", str(self.root))
-        self.assertEqual(result.returncode, 0, result.stderr)
-
-    def test_old_pass_becomes_stale_when_content_changes(self):
-        path = self.root / "contract.txt"
-        path.write_text("v1")
-        self.add("goal", verifier_ref="shell: true")
-        self.verify()
-        self.assertTrue(view_goals(load_fragments(self.frags))[0]["met"])
-        path.write_text("v2")
-        self.add("decision", "change terms")
-        self.capture()
-        frags = load_fragments(self.frags)
-        vf = next(f for f in frags if f.kind == "verification-fact")
-        self.assertEqual(verification_status(vf, frags), "stale")
-        self.assertFalse(view_goals(frags)[0]["met"])
-        self.verify()
-        self.assertTrue(view_goals(load_fragments(self.frags))[0]["met"])
-
-    def test_scoped_pass_survives_unrelated_file_changes(self):
-        (self.root / "contract.txt").write_text("v1")
-        (self.root / "notes.txt").write_text("v1")
-        self.add("goal", verifier_ref="shell: true", verification_paths=["contract.txt"])
-        self.verify()
-        (self.root / "notes.txt").write_text("v2")
-        self.add("decision", "notes only")
-        self.capture()
-        self.assertTrue(view_goals(load_fragments(self.frags))[0]["met"])
-
-    def test_verifier_that_changes_its_inputs_fails(self):
-        (self.root / "x").write_text("before")
-        self.add("goal", verifier_ref="shell: printf after > x")
-        result = self.run_tool("skills/verifier-shell.py", "--project-root", str(self.root))
-        self.assertEqual(result.returncode, 1)
-        vf = next(f for f in load_fragments(self.frags) if f.kind == "verification-fact")
-        self.assertFalse(vf.get("passed"))
-
-    def test_finish_captures_unexplained_changes_before_checking(self):
-        (self.root / "x").write_text("before")
-        self.capture()
-        (self.root / "x").write_text("after")
-        result = self.run_tool("skills/finish.py", "--project-root", str(self.root))
-        self.assertEqual(result.returncode, 1)
-        self.assertIn("unexplained-change", result.stdout)
-
-
-class TestFocusedHandoff(ProjectCase):
-    def test_bulk_capture_does_not_pull_unrelated_judgments_into_focus(self):
-        unrelated = self.add("decision", "office stationery")
-        relevant = self.add("decision", "contract approved")
-        self.add("witness", "+ hash 1 contract.txt", explained_by=[unrelated, relevant], files_added=1)
-        chosen = focus_ids(load_fragments(self.frags), "contract")
-        self.assertIn(relevant, chosen)
-        self.assertNotIn(unrelated, chosen)
-
-    def test_review_condition_is_recorded_time_based_and_does_not_retire(self):
-        from render import review_conditions
-        f = Fragment("rule", "2026-01-01T00:00:00Z", "decision", extra={"review_after": "2026-02-01"})
-        self.assertEqual(review_conditions([f]), [])
-        clock = Fragment("observed", "2026-02-02T00:00:00Z", "fact")
-        self.assertEqual([x.id for x in review_conditions([f, clock])], ["rule"])
-        self.assertIn("rule", render_for_agent([f, clock]))
-
-    def test_focus_retains_global_rules_open_work_and_evidence(self):
-        principle = self.add("principle", "always keep evidence")
-        global_rule = self.add("decision", "do not publish without review", scope="global")
-        evidence = self.add("fact", "source contract approved")
-        relevant = self.add("decision", "monthly contract cadence", refs=[evidence])
-        unrelated = self.add("decision", "old office stationery choice")
-        goal = self.add("goal", "unfinished billing", verifier_ref="shell: false")
-        gap = self.add("witness", files_changed=1)
-        frags = load_fragments(self.frags)
-        chosen = focus_ids(frags, "contract")
-        self.assertTrue({principle, global_rule, relevant, evidence, goal, gap} <= chosen)
-        self.assertNotIn(unrelated, chosen)
-        text = render_for_agent(frags, selected_ids=chosen)
-        self.assertIn("unfinished billing", text)
-        self.assertIn("Unexplained change", text)
-        self.assertNotIn("old office stationery choice", text)
-        self.assertEqual(text, render_for_agent(frags, selected_ids=chosen))
 
 
 if __name__ == "__main__":

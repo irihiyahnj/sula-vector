@@ -71,15 +71,12 @@ substrate's job (Tier B7).
 
 | skill | what it does |
 | ----- | ------------ |
-| `witness.py` | Mechanical evidence. Scans the project folder, diffs against the state folded out of prior `kind: witness` fragments, appends one witness fragment recording path + content hash for every added/changed/removed file. Records `commit`/`branch` and the commits since the last witness on git substrates; emits one `kind: artifact` fragment per new document. Silent when nothing changed. |
-| `finish.py` | Capture, doctor, and detect file changes after capture before claiming done. |
+| `witness.py` | Optional mechanical evidence for folders without git. Scans the project folder, diffs against the state folded out of prior `kind: witness` fragments, appends one witness fragment recording path + content hash for every added/changed/removed file. Records `commit`/`branch` and the commits since the last witness on git substrates; emits one `kind: artifact` fragment per new document. Silent when nothing changed. |
 | `verifier-shell.py` | Runs a shell command as a goal verifier. Reads goals whose `verifier_ref` is `shell:<command>`, runs the command, appends a `kind: verification-fact` with `passed: true/false`. |
-| `scheduler.py` | Fires `kind: cadence-tick` when a recurring intent's interval has elapsed. |
-| `llm-dispatcher.py` | Routes intents carrying `executor_command` to a configured shell executor and captures stdout as a `kind: turn`. |
 
-`witness.py` is the one skill that changes the protocol's shape: with it
-installed, evidence stops depending on an agent choosing to describe what it
-did. Wire it once with `../hooks/install.py`.
+On a git repository the history already records what changed and the commit
+message records why that change was made, so witness is not needed there. Run
+it by hand or from a scheduler you already have; nothing gates on it.
 
 ## Adding a new skill
 
@@ -90,5 +87,3 @@ a skill instead? Most things can. Keeping the core minimal and skills
 plentiful is the architectural goal.
 
 Use the shared `append.py` writer; do not call `write_text` on fragment paths.
-Verifier results bind to content hashes, and capture records parent IDs. See
-[the tooling guide](../README.md) for version scope and reconciliation.

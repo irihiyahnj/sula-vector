@@ -1,5 +1,66 @@
 # Sula Vector — Release Notes
 
+## v1.4.0 — The boot carries the rules (stable)
+
+**Release date:** 2026-10-05
+**Convention version:** 1.3. Every fragment written under 1.0–1.2 still parses.
+Fields this release no longer reads are ignored, which changes two outcomes:
+a passed verification that 1.2 marked stale now counts, and a judgment with
+`governs` no longer decays — supersede it if its subject is gone.
+
+**This breaks the v1.3 mechanism freeze** on its own stated ground: an observed
+defect. The boot failed its purpose in measurement (below), and the fix needed
+a new kind and a new tool.
+
+**Why.** Measured on an adopted project with 444 judgments in force: an agent
+reading only the old boot (130 KB of judgment titles) fully answered 5 of 14
+questions about standing rules, because a title names an event, not the rule.
+The same agent reading a maintained rule sheet (48 KB) answered 14 of 14, 16 of
+16 task scenarios and 6 of 6 questions on rules that had changed, in two runs
+scored blind by two graders. Three agents each changed the sheet one line;
+a line-by-line diff found no change outside the intended lines. Meanwhile the
+unexplained-change gate had produced 120 placeholder judgments in that project
+and was red in 11 of 19 adopted projects.
+
+- **Rule sheet.** New `kind: rules` and `rules.py` (`show`, `add`, `edit
+  --match`, `remove --match`, `set --from`, `log`). Each change appends a full
+  new version that supersedes the previous one and records `--why`; edits are
+  one line at a time, `set` is for the first version and for merging a fork.
+  Malformed sheets are refused; forks are shown in boot and fail doctor
+  (`rules-fork`, `rules-malformed`).
+- **Boot.** `--for-agent` prints the rule sheet, open goals, the last 10
+  judgment titles and how to look things up. A project without a sheet keeps
+  the previous boot (principles and all judgments in force) with a notice.
+- **Doctor is structural only.** Removed `unexplained-change`,
+  `capture-ancestry`, `capture-fork` and `invalid-explanation`.
+- **Removed:** `skills/finish.py`, `skills/scheduler.py`,
+  `skills/llm-dispatcher.py`, `skills/auto-update-from-canonical.py`,
+  `hooks/install.py`, the shipped Tier A–E principle fragments (the copies under
+`tools/sula_vector/principles/`; principle fragments already in a project's
+`fragments/` stay and show only in the no-sheet boot); views
+  `digest`, `progress`, `thread`, `family`, `principles`, `unexplained`,
+  `decay` and `--focus`; `note.py --explains` and `--verify-path`; verification
+  binding to file hashes. A goal is met when closed or its latest verification
+  passed; verifier-shell re-runs only goals not yet met.
+- **Kept:** `skills/witness.py` as optional evidence for folders without git;
+  doctor no longer checks it (witness itself still refuses to capture over a
+  forked capture history until `--reconcile`). `skills/verifier-shell.py`. The legacy 0.18.x migration.
+- **Update path.** `migrate.py` removes the retired tool files, removes the
+  git post-commit and Kiro triggers earlier releases installed (only when they
+  are recognisably Sula's), replaces host pointers that still hold the
+  previously generated text, and rewrites the `AGENTS.md` protocol region. It
+  no longer installs principle fragments or offers `--settle-legacy-captures`.
+
+**Upgrading a project.** Run `update-from-canonical.sh`, then write the first
+rule sheet. For a project with history, build it from `--view effective`, have
+a reader that did not write it check every line against its sources, fix, and
+re-check the changed lines until nothing is found — in the measurement above
+the first draft had 5 wrong lines out of 149 and one fix round introduced a
+new unsupported line. Until a sheet exists the boot behaves as before.
+
+**Not measured.** Effect on real tasks rather than exams; more than one
+adopted project; graders and exam writers of a different model family.
+
 ## v1.3.0 — Reliable handoffs
 
 **Release date:** 2026-09-05

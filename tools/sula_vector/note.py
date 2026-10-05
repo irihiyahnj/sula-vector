@@ -3,13 +3,12 @@
 
 The whole point of this tool is that identity is never hand-written: id and
 time come from the clock and the filename, and every `--refs` / `--closes` /
-`--supersedes` / `--explains` target is checked against the vector before the
+`--supersedes` target is checked against the vector before the
 file is written. A malformed or dangling fragment cannot be produced this way.
 
     python3 note.py . --kind decision "选定 A 供应商，因为交付周期短一半"
     python3 note.py . --kind artifact --pointer docs/proposal.pdf "客户提案 v2"
     python3 note.py . --kind decision --supersedes <id> "改回月度节奏"
-    python3 note.py . --kind decision --explains <witness-id> "为什么改了这些文件"
     python3 note.py . --kind correction --broken-ref <id>,<id> "这些 id 从未存在"
     echo "长正文" | python3 note.py . --kind assessment --title "季度复盘"
 """
@@ -25,7 +24,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from append import append_fragment, fragment_text
-from render import LANE_BY_KIND, LANES, Fragment, explanation_problems, is_symbolic_ref, load_fragments
+from render import LANE_BY_KIND, LANES, is_symbolic_ref, load_fragments
 
 SLUG_KEEP = re.compile(r"[^a-z0-9]+")
 
@@ -38,15 +37,12 @@ RESERVED_FIELD_KEYS = {
     "tags",
     "closes",
     "supersedes",
-    "explains",
     "broken_ref",
-    "explained_by",
     "done_when",
     "verifier_ref",
     "pointer",
     "author",
     "summary",
-    "verification_paths",
 }
 
 
@@ -87,12 +83,6 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument(
         "--supersedes", action="append", default=[], help="ids of judgments this replaces"
     )
-    p.add_argument(
-        "--explains",
-        action="append",
-        default=[],
-        help="ids of witnessed changes this accounts for",
-    )
     # Deliberately outside the existence check below: these ids are broken
     # precisely because nothing carries them. Validating them would make the
     # repair path for a dangling reference impossible to use.
@@ -108,7 +98,6 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--author", default="")
     p.add_argument("--done-when", default="", help="goal success condition")
     p.add_argument("--verifier", default="", help="e.g. 'shell: python3 -m unittest ...'")
-    p.add_argument("--verify-path", action="append", default=[], help="Relative verification input; repeat for multiple files/directories")
     p.add_argument("--field", action="append", default=[], metavar="KEY=VALUE")
     p.add_argument("--dry-run", action="store_true")
     args, extra = p.parse_known_args(argv)
@@ -139,7 +128,6 @@ def main(argv: list[str] | None = None) -> int:
     args.tags = items(args.tags)
     args.closes = items(args.closes)
     args.supersedes = items(args.supersedes)
-    args.explains = items(args.explains)
     args.broken_ref = items(args.broken_ref)
 
     body = args.body.strip()
@@ -157,7 +145,6 @@ def main(argv: list[str] | None = None) -> int:
             list(args.refs)
             + list(args.closes)
             + list(args.supersedes)
-            + list(args.explains)
         )
         if target not in existing and not is_symbolic_ref(target)
     ]
@@ -170,10 +157,9 @@ def main(argv: list[str] | None = None) -> int:
     if args.kind == "goal" and not args.verifier:
         print("a goal needs --verifier (B9: no goal without a verifier)", file=sys.stderr)
         return 2
-    for path in args.verify_path:
-        if Path(path).is_absolute() or ".." in Path(path).parts or not path.strip():
-            print(f"verification input must be project-relative: {path}", file=sys.stderr)
-            return 2
+    if args.kind == "rules":
+        print("the rule sheet is written with rules.py, which validates it", file=sys.stderr)
+        return 2
 
     now = now_utc()
     stamp = now.isoformat(timespec="microseconds").replace("+00:00", "Z")
@@ -210,7 +196,6 @@ def main(argv: list[str] | None = None) -> int:
     fields["tags"] = list(args.tags)
     fields["closes"] = list(args.closes)
     fields["supersedes"] = list(args.supersedes)
-    fields["explains"] = list(args.explains)
     fields["broken_ref"] = list(args.broken_ref)
     if args.title:
         fields["summary"] = args.title
@@ -222,15 +207,8 @@ def main(argv: list[str] | None = None) -> int:
         fields["done_when"] = args.done_when
     if args.verifier:
         fields["verifier_ref"] = args.verifier
-    if args.verify_path:
-        fields["verification_paths"] = args.verify_path
     fields.update(extra)
 
-    candidate = Fragment(id="pending", time=stamp, kind=args.kind, extra=fields, body=body)
-    issues = explanation_problems([*frags, candidate])
-    if any(p.fragment == "pending" for p in issues):
-        print("invalid explanation relation: " + "; ".join(p.detail for p in issues if p.fragment == "pending"), file=sys.stderr)
-        return 2
     try:
         if args.dry_run:
             sys.stdout.write(fragment_text(fields, body or args.title))

@@ -1,45 +1,42 @@
 {
   "method": "controlled fixtures copied between local directories",
-  "limitations": "No real-user timing, codec QA, remote-device or sync-provider test; byte counts are not token counts.",
+  "limitations": "No real-user timing, remote-device or sync-provider test.",
   "scenarios": [
     {
       "scenario": "code-project",
       "fixture": "src/rule.py",
       "asset_bytes": 16,
-      "full_context_bytes": 11060,
-      "focused_context_bytes": 2133,
-      "reading_bytes_reduction_percent": 80.7,
-      "rationale_source_and_global_rules_retained": true,
+      "boot_bytes": 972,
       "copied_project_boot_byte_stable": true,
-      "copied_updater_starts_without_canonical_imports": true,
-      "filtered_goal_stays_verified": true,
-      "same_size_edit_invalidates_old_pass": true
+      "rules_in_boot": true,
+      "verified_goal_closed": true,
+      "receiving_side_rule_change": true,
+      "updater_starts_from_copy": true,
+      "doctor_ok": true
     },
     {
       "scenario": "document-project",
       "fixture": "delivery/terms.txt",
       "asset_bytes": 9,
-      "full_context_bytes": 11091,
-      "focused_context_bytes": 2229,
-      "reading_bytes_reduction_percent": 79.9,
-      "rationale_source_and_global_rules_retained": true,
+      "boot_bytes": 979,
       "copied_project_boot_byte_stable": true,
-      "copied_updater_starts_without_canonical_imports": true,
-      "filtered_goal_stays_verified": true,
-      "same_size_edit_invalidates_old_pass": true
+      "rules_in_boot": true,
+      "verified_goal_closed": true,
+      "receiving_side_rule_change": true,
+      "updater_starts_from_copy": true,
+      "doctor_ok": true
     },
     {
       "scenario": "media-sized-project",
       "fixture": "delivery/master.bin",
       "asset_bytes": 52428801,
-      "full_context_bytes": 11092,
-      "focused_context_bytes": 2230,
-      "reading_bytes_reduction_percent": 79.9,
-      "rationale_source_and_global_rules_retained": true,
+      "boot_bytes": 980,
       "copied_project_boot_byte_stable": true,
-      "copied_updater_starts_without_canonical_imports": true,
-      "filtered_goal_stays_verified": true,
-      "same_size_edit_invalidates_old_pass": true
+      "rules_in_boot": true,
+      "verified_goal_closed": true,
+      "receiving_side_rule_change": true,
+      "updater_starts_from_copy": true,
+      "doctor_ok": true
     }
   ],
   "passed": true

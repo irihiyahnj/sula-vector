@@ -1,5 +1,11 @@
 #!/usr/bin/env python3
-"""Reproducible code/document/media-sized handoffs, not a user time-savings study."""
+"""Reproducible handoffs of copied projects: code, documents, media-sized files.
+
+Not a user time-savings study. Each scenario builds a project with the copied
+tooling, writes a rule sheet and a verified goal, copies the whole folder
+elsewhere, and checks that the receiving side boots identically, still sees
+the rules and the verification, can change a rule, and passes doctor.
+"""
 
 from __future__ import annotations
 
@@ -38,57 +44,42 @@ def scenario(parent: Path, name: str, rel: str, size: int) -> dict:
         if size:
             handle.truncate(size)
 
-    def add(kind: str, body: str, **fields) -> str:
-        return append_fragment(fragments, kind, {"kind": kind, **fields}, body).stem
+    reason = append_fragment(fragments, "decision", {"kind": "decision", "summary": "Release only after approval"},
+                             "The client signs off each delivery before it ships.").stem
+    sheet = parent / f"{name}-sheet.md"
+    sheet.write_text(f"## Delivery\n- Ship {rel} only after the client approves it [{reason.split("--")[0]}]\n", encoding="utf-8")
+    run(root, "rules.py", ".", "set", "--from", str(sheet), "--why", "first rule sheet", "--refs", reason)
 
-    add("principle", "GLOBAL: retain source evidence.")
-    add("decision", "GLOBAL: release only after approval.", scope="global")
-    source = add("fact", "SOURCE: approval received for the current delivery.")
-    add("decision", "RATIONALE: keep this delivery version because it matches the approved source.",
-        refs=[source], tags=["delivery"], governs=[rel])
-    for index in range(30):
-        add("decision", f"Unrelated historical topic {index}: " + "office convention and rationale " * 5)
     check = f"from pathlib import Path; assert Path({rel!r}).open('rb').read(8) == b'approved'"
     if asset.suffix == ".py":
         check = f"import runpy; assert runpy.run_path({rel!r})['approved'] is True"
-    goal = add("goal", "Validate the delivery version.", done_when="approved bytes match",
-               verifier_ref="shell: " + shlex.quote(sys.executable) + " -c " + shlex.quote(check),
-               verification_paths=[rel], tags=["delivery"])
+    run(root, "note.py", ".", "--kind", "goal", "--title", "Delivery approved",
+        "--done-when", "approved bytes match",
+        "--verifier", "shell: " + shlex.quote(sys.executable) + " -c " + shlex.quote(check),
+        "Validate the delivery version.")
     run(root, "skills/verifier-shell.py", "--project-root", str(root))
     full = run(root, "render.py", ".", "--for-agent")
-    focused = run(root, "render.py", ".", "--for-agent", "--focus", "delivery")
-    for marker in ("GLOBAL:", "RATIONALE:", "SOURCE:"):
-        if marker not in focused:
-            raise AssertionError(f"{name}: focus dropped {marker}")
-    if len(focused.encode()) >= len(full.encode()):
-        raise AssertionError(f"{name}: task focus did not reduce this fixture's reading cost")
-    rows = json.loads(run(root, "render.py", ".", "--view", "goals", "--kind", "goal", "--json"))
-    if not next(row for row in rows if row["goal"]["id"] == goal)["met"]:
-        raise AssertionError("filtered goal lost its verification")
+    if f"Ship {rel} only after the client approves it" not in full:
+        raise AssertionError(f"{name}: boot lost the rule")
+    if "Delivery approved" in full.split("## Open goals", 1)[1].split("##", 1)[0]:
+        raise AssertionError(f"{name}: a verified goal still shows as open")
 
     copy = parent / f"{name}-received"
     shutil.copytree(root, copy)
-    received = run(copy, "render.py", ".", "--for-agent", "--focus", "delivery")
-    if focused != received:
-        raise AssertionError("handoff changed rendered context")
-    run(copy, "skills/auto-update-from-canonical.py", "--help")
-    before_size = (copy / rel).stat().st_size
-    with (copy / rel).open("r+b") as handle:
-        handle.write(b"rejected")
-    append_fragment(copy / "fragments", "decision", {"kind": "decision"}, "Change the delivered bytes to exercise stale verification.")
-    run(copy, "skills/witness.py", "--project-root", str(copy))
-    rows = json.loads(run(copy, "render.py", ".", "--view", "goals", "--json"))
-    row = next(row for row in rows if row["goal"]["id"] == goal)
-    if row["met"] or "stale" not in row["verification_states"].values():
-        raise AssertionError("same-size replacement reused the old approval")
-    run(copy, "skills/finish.py", "--project-root", str(copy))
+    if run(copy, "render.py", ".", "--for-agent") != full:
+        raise AssertionError(f"{name}: handoff changed the boot context")
+    run(copy, "migrate.py", "--help")
+    run(copy, "rules.py", ".", "add", "--section", "Delivery", "--why", "receiving side adds a rule",
+        "Keep the signed approval with the delivery")
+    if "Keep the signed approval with the delivery" not in run(copy, "render.py", ".", "--for-agent"):
+        raise AssertionError(f"{name}: rule change did not reach the boot")
+    run(copy, "render.py", ".", "--view", "doctor")
     return {
-        "scenario": name, "fixture": rel, "asset_bytes": before_size,
-        "full_context_bytes": len(full.encode()), "focused_context_bytes": len(focused.encode()),
-        "reading_bytes_reduction_percent": round(100 * (1 - len(focused.encode()) / len(full.encode())), 1),
-        "rationale_source_and_global_rules_retained": True,
-        "copied_project_boot_byte_stable": True, "copied_updater_starts_without_canonical_imports": True,
-        "filtered_goal_stays_verified": True, "same_size_edit_invalidates_old_pass": True,
+        "scenario": name, "fixture": rel, "asset_bytes": asset.stat().st_size,
+        "boot_bytes": len(full.encode()),
+        "copied_project_boot_byte_stable": True, "rules_in_boot": True,
+        "verified_goal_closed": True, "receiving_side_rule_change": True,
+        "updater_starts_from_copy": True, "doctor_ok": True,
     }
 
 
@@ -104,7 +95,7 @@ def main() -> int:
             ("media-sized-project", "delivery/master.bin", 50 * 1024 * 1024 + 1),
         ]]
     report = {"method": "controlled fixtures copied between local directories",
-              "limitations": "No real-user timing, codec QA, remote-device or sync-provider test; byte counts are not token counts.",
+              "limitations": "No real-user timing, remote-device or sync-provider test.",
               "scenarios": rows, "passed": True}
     text = json.dumps(report, ensure_ascii=False, indent=2) + "\n"
     if args.output:

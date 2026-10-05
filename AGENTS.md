@@ -9,23 +9,10 @@
 <!-- sula-vector -->
 # AGENTS.md — Sula Vector
 
-This project's truth lives in `fragments/` as an append-only folder of typed
-text files. Every view — status, progress, agent context, audit trail — is
-`render(fragments, conventions)`.
+This project's memory lives in `fragments/`: an append-only folder of typed
+text files. Every view is computed from it. Past fragments are never edited.
 
-## Highest rule (Tier A)
-
-> A project's truth is an ordered, append-only folder of typed fragments.
-> Every view is `render(fragments, conventions)`.
-> No mutation. No implicit state. No truth outside this convention.
->
-> If anything else conflicts with this rule, this rule wins.
-
-Tier B (invariants), C (aesthetics), D (discipline) and E (anti-patterns) ship
-as `kind: principle` fragments inside this project. `render --for-agent`
-prepends them to every boot. `render . --view principles` prints them in full.
-
-## Boot — two steps (B6)
+## Boot
 
 1. Note the current ISO-8601 UTC time as your `session_start`.
 2. Run and read:
@@ -34,62 +21,58 @@ prepends them to every boot. `render . --view principles` prints them in full.
 python3 tools/sula_vector/render.py . --for-agent
 ```
 
-That output is authoritative project context. Nothing else is required —
-no install, no network, no daemon.
-
-## Three lanes
-
-Every fragment falls into one of three lanes. `kind` stays a free-form string
-(B3); the lane is a render-time projection, not a validated enum.
-
-| lane | question | who supplies it |
-| --- | --- | --- |
-| `judgment` | **why** — decisions, corrections, assessments, principles | you, deliberately |
-| `evidence` | **what** — files produced, commits made, external facts | `skills/witness.py`, mechanically |
-| `direction` | **where to** — goals and intents, each closable | you, with a verifier |
-
-The division is the whole protocol: **you are responsible for judgment, the
-runtime is responsible for evidence.** Do not narrate mechanical facts by
-hand — witness already has them, with hashes.
+The output is authoritative project context. Its **Rules** section is the
+project's rule sheet: follow every line. Each rule ends with the filename
+prefixes of the fragments that hold its reason; read them when you need the why
+(`ls fragments | grep '^<prefix>'`, then `cat`). Search other history with
+`grep -ril '<term>' fragments/`.
 
 ## During the turn
 
 Record a judgment whenever you choose a direction, revise one, correct a past
-claim, or assess state. One append per judgment (C5):
+claim, or assess state — one append each:
 
 ```bash
 python3 tools/sula_vector/note.py . --kind decision --title "<one line>" "<why>"
 python3 tools/sula_vector/note.py . --kind correction --supersedes <id> "<what was wrong>"
 python3 tools/sula_vector/note.py . --kind goal --title "<outcome>" \
   --done-when "<condition>" --verifier "shell: <command>" "<context>"
-python3 tools/sula_vector/note.py . --kind fact --closes <intent-id> "<what closed it>"
-python3 tools/sula_vector/note.py . --kind decision --explains <witness-id> "<why those files changed>"
+python3 tools/sula_vector/note.py . --kind fact --closes <goal-id> "<what closed it>"
 ```
 
-Use `--field scope=global` for judgments every focused view must retain,
-`--field review_after=YYYY-MM-DD` for date-based review, and
-`--field review_when="<business condition>"` for a reader-evaluated review trigger.
-Reviews are measured against recorded activity; they do not expire a judgment.
+When a decision creates, changes or retires a standing rule, change the rule
+sheet in the same turn, one line at a time:
 
-Give a judgment a subject with `--field governs=<path>` when it governs
-something on disk. When a witness later records that path removed, the judgment
-surfaces in boot as decayed instead of staying in force forever — the signal a
-direction gets from its verifier (B9), which judgment otherwise lacks.
+```bash
+python3 tools/sula_vector/rules.py . add --section "<heading>" --why "<why>" "<rule> [<source tag>]"
+python3 tools/sula_vector/rules.py . edit --match "<text in exactly one rule>" --why "<why>" "<new rule>"
+python3 tools/sula_vector/rules.py . remove --match "<text in exactly one rule>" --why "<why>"
+```
 
-`note.py` derives `id` and `time` from the clock, rejects unknown `--refs` /
-`--closes` / `--supersedes` targets, and refuses a goal without a verifier.
-Never hand-write a fragment file: a wrong id, a wrong timestamp, or a dangling
-reference should be unrepresentable, not merely detectable.
+Write each rule so that the line alone is enough to act on: what must or must
+not be done, the concrete names, values, paths and who decides. Its source tag
+is the time prefix of the fragment holding the reason — usually the decision
+you just recorded. If no rule sheet exists yet, the boot says so; create the
+first one with `rules.py . set --from <file> --why "<why>"`.
+
+On git, the commit message carries the why of each change; there is no
+separate capture step.
 
 ## Never
 
-- Edit or delete a past fragment (B1, E3). Append a `correction` that names it
-  in `--supersedes` instead.
-- Append when nothing meaningful changed (C7).
-- Declare a goal without a verifier (B9, E9).
-- Add a state directory, cache, index, or daemon beside `fragments/` (B4, E1, E2).
+- Edit or delete a past fragment. Append a `correction` with `--supersedes`.
+- Hand-write a fragment file; `note.py` and `rules.py` derive id and time.
+- Declare a goal without a verifier.
+- Append when nothing meaningful changed.
+- Add a state directory, cache or index beside `fragments/`.
 
 ## End of turn
+
+Before claiming done, run the project's own checks and:
+
+```bash
+python3 tools/sula_vector/render.py . --view doctor   # must exit 0
+```
 
 If you appended anything, show the user the mark:
 
@@ -97,66 +80,17 @@ If you appended anything, show the user the mark:
 python3 tools/sula_vector/render.py . --view changes-summary --since <session_start>
 ```
 
-Display the full multi-line `[sula] +N this turn:` block. If the output is
-`[sula] no changes`, display nothing (C7).
-
-If the mark ends with `! N file change(s) witnessed, nothing claims them`, the
-turn changed files and left no why behind. Append the missing judgment before
-you finish, naming the capture it accounts for — witness has the what, and only
-you have the reason:
-
-```bash
-python3 tools/sula_vector/note.py . --kind decision --explains <witness-id> "<why>"
-```
-
-Pairing is an explicit fact, never inferred from timestamps. Capture writes
-`explained_by` for the judgments it already found in its window, so the normal
-order (record the judgment, then commit) needs nothing extra. What is left over
-is a real omission: it appears in the next agent's boot under
-`## Unexplained change` and does not expire, because no unrelated append can
-discharge it.
-
-Before claiming a task is done (D5), capture the working tree and check both the vector and the observed file version:
-
-```bash
-python3 tools/sula_vector/skills/finish.py --project-root .   # must exit 0
-```
-
-finish runs witness, doctor, and a second scan to detect changes after capture. Doctor alone checks recorded fragments, not the live working tree.
-
-Doctor counts an unexplained change as a problem. A turn that changed files and
-recorded no why is not finished, so the gate stays shut until the why lands.
+Display the full `[sula] +N this turn:` block; if it says `[sula] no changes`,
+display nothing.
 
 ## Views
 
 ```bash
-python3 tools/sula_vector/render.py . --for-agent            # boot context
-python3 tools/sula_vector/render.py . --for-agent --focus "<task terms or path>"  # after full boot
-python3 tools/sula_vector/render.py . --view journal         # day by day: decided / produced
-python3 tools/sula_vector/render.py . --view effective       # judgments in force + supersession trail
-python3 tools/sula_vector/render.py . --view goals           # goals + verification status
-python3 tools/sula_vector/render.py . --view unexplained     # witnessed change nothing claims
-python3 tools/sula_vector/render.py . --view decay           # judgments whose subject is gone
-python3 tools/sula_vector/render.py . --view doctor          # structural integrity
-python3 tools/sula_vector/render.py . --lane evidence --view list
+python3 tools/sula_vector/render.py . --view journal     # day by day
+python3 tools/sula_vector/render.py . --view effective   # judgments in force + supersession trail
+python3 tools/sula_vector/render.py . --view goals       # goals + verification status
+python3 tools/sula_vector/rules.py . log                 # every rule-sheet change and its why
 ```
-
-## Mechanical capture
-
-```bash
-python3 tools/sula_vector/hooks/install.py --project-root .   # once per project
-python3 tools/sula_vector/skills/witness.py --project-root .  # or run by hand
-```
-
-The installer wires whatever the substrate already offers, and names the host
-each trigger actually reaches: a git `post-commit` hook, a Kiro CLI agent
-config (`agentSpawn` injects this boot, `stop` runs the completion check), a Kiro IDE
-hook, and on a folder or Drive substrate a launchd timer on macOS or the cron
-line to paste. Sula never schedules anything itself (B7).
-
-The Kiro CLI agent is written but not activated: a custom agent replaces the
-built-in default agent's prompt, which is not a change to make on someone's
-behalf. Activate it with `kiro-cli settings chat.defaultAgent sula`.
 
 ## Adopt into a new project
 
@@ -164,10 +98,6 @@ behalf. Activate it with `kiro-cli settings chat.defaultAgent sula`.
 mkdir -p new-project/fragments
 cp -r tools/sula_vector new-project/tools/sula_vector
 cp tools/sula_vector/AGENTS.md new-project/AGENTS.md
-cp tools/sula_vector/principles/*.md new-project/fragments/
-python3 new-project/tools/sula_vector/hooks/install.py --project-root new-project
 ```
 
-Works the same for a code repository, a company folder of documents on Drive,
-or a personal project. The full convention is
-`docs/sula-vector-convention.md`.
+The full convention is `docs/sula-vector-convention.md`.

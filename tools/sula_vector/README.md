@@ -3,81 +3,75 @@
 Project memory is an append-only `fragments/` folder. Render reads it; tools
 publish complete new fragments. Python standard library only.
 
-## Start and finish a session
+## A session
 
 ```bash
-python3 tools/sula_vector/render.py . --for-agent
-python3 tools/sula_vector/note.py . --kind decision --title "Chosen approach" "Why this approach"
-python3 tools/sula_vector/skills/finish.py --project-root .
+python3 tools/sula_vector/render.py . --for-agent        # boot: rules, open goals, recent judgments
+python3 tools/sula_vector/note.py . --kind decision --title "<one line>" "<why>"
+python3 tools/sula_vector/rules.py . edit --match "<unique text>" --why "<why>" "<new rule>"
+python3 tools/sula_vector/render.py . --view doctor      # structural integrity, exit 1 on problems
 ```
 
-`finish` captures files, runs doctor, then scans again to detect changes after
-capture. Its success describes that observation, not future edits. Plain
-`render --view doctor` checks recorded fragments without reading project files.
+## The rule sheet
 
-## Read a task's context
+The boot carries one maintained sheet of rules instead of the title of every
+judgment ever made. A title names an event; an agent that reads only titles
+knows something happened but not what it must now do.
 
 ```bash
-python3 tools/sula_vector/render.py . --for-agent --focus "contract"
-python3 tools/sula_vector/render.py . --view goals --kind goal
-python3 tools/sula_vector/render.py . --view effective --tag delivery
+python3 tools/sula_vector/rules.py . show
+python3 tools/sula_vector/rules.py . add --section "部署" --why "<why>" "<rule> [<source tag>]"
+python3 tools/sula_vector/rules.py . edit --match "<text in exactly one rule>" --why "<why>" "<new rule>"
+python3 tools/sula_vector/rules.py . remove --match "<text in exactly one rule>" --why "<why>"
+python3 tools/sula_vector/rules.py . set --from sheet.md --why "<why>"   # first version, or merging a fork
+python3 tools/sula_vector/rules.py . log
 ```
 
-Use focus after the full boot. It selects matching text, tags, subjects and
-outgoing evidence links. It keeps principles, judgments explicitly marked
-`scope: global`, open directions and risk notices. It includes the selected
-judgments' rationale; it never changes which judgments remain in force.
+Format: `## ` topic headings; every rule is one line starting with `- `, stated
+so that the line alone is enough to act on, ending with the filename prefixes
+of the fragments that hold its reason, e.g. `[2026-09-18T02-46-23Z]`.
 
-Mark a business review condition with `--field review_when="contract renewed"`
-or `--field review_after=2026-12-01`. Date review uses the latest recorded
-activity, keeping replay deterministic. Supersede or restate a judgment after
-review; a review notice does not retire it automatically.
+Every change appends a complete new `kind: rules` fragment that supersedes the
+previous version and records `--why`. The tool prints the lines it added and
+removed. Two versions superseding the same parent are a fork: boot shows both,
+doctor reports `rules-fork`, and line edits are refused until `set` merges them.
 
-All display filters preserve the full evidence graph. `--until` explicitly
-selects a historical graph; `--since` limits displayed objects only.
+Writing the first sheet for a project with history is the one risky step.
+Build it from the judgments in force, then have a reader that did not write it
+check every line against its sources, fix what it finds, and re-check the
+changed lines, until the check finds nothing.
 
-## Verify a file version
+## Goals
 
 ```bash
-python3 tools/sula_vector/note.py . --kind goal --title "Validate delivery" \
-  --done-when "Delivery checks pass" --verifier "shell: python3 checks.py" \
-  --verify-path delivery --verify-path checks.py "Validate the delivery folder"
+python3 tools/sula_vector/note.py . --kind goal --title "Delivery checks pass" \
+  --done-when "checks.py exits 0" --verifier "shell: python3 checks.py" "<context>"
 python3 tools/sula_vector/skills/verifier-shell.py --project-root .
 python3 tools/sula_vector/render.py . --view goals
 ```
 
-By default verification covers every captured file. Repeat `--verify-path` to
-select relative files/directories, including all inputs and dependencies the
-check relies on. The verifier hashes before and after the command. Changing
-its inputs invalidates the result. Later captured changes mark old results
-`stale`; old results without a binding are shown as `unbound`. External services
-and runtime environments are not covered by file hashes.
+A goal is met when it is closed (`note.py --closes <id>`) or its latest
+verification passed.
+
+## Views
+
+`--for-agent`, `--view list | journal | effective | goals | doctor | changes-summary`,
+filtered by `--kind --lane --tag --ref --since --until`, with `--json`.
+
+## Evidence
+
+On git, history records what changed and the commit message records why that
+change was made. For a folder without version control, `skills/witness.py`
+records path and SHA-256 per changed file as a `witness` fragment. It is
+optional and nothing gates on it.
 
 ## Storage and sync
 
-Convention 1.2 accepts both second and microsecond timestamps. New fragment
-names carry random suffixes. `append.py` stages a complete file inside
-`fragments/`, flushes it, and uses an atomic no-replace hard link to publish it.
-A `.tmp` left by a killed process is not a fragment. An unsupported filesystem
-fails explicitly; it must not silently fall back to an overwriting write.
+`append.py` stages a complete file inside `fragments/`, flushes it, and
+publishes it with an atomic no-replace hard link; names carry microsecond time
+and a random suffix. An unsupported filesystem fails explicitly instead of
+falling back to an overwriting write.
 
-`witness` streams SHA-256 for every included regular file, including large
-media. Ignore patterns and excluded symlinks are recorded as coverage. Read or
-mid-read mutation errors stop capture. The first capture after upgrading old
-fingerprints refreshes the stored hashes, so it may list unchanged-content files.
-
-New captures name their parents. Missing ancestors and concurrent capture
-branches fail doctor rather than silently choosing a tree. After fully syncing
-the project files and fragments, merge the observed branches with:
-
-```bash
-python3 tools/sula_vector/skills/witness.py --project-root . --reconcile
-python3 tools/sula_vector/skills/finish.py --project-root .
-```
-
-Reconciliation records the current local tree as a complete snapshot. It does
-not perform synchronization or decide which device's files should win.
-
-The updater copies `append.py`, `capture.py`, `migrate.py` and all skills as one
-tooling set. Update every writer/reader before it consumes convention 1.2
-fragments. Existing fragments are never rewritten.
+`update-from-canonical.sh` / `migrate.py` refresh this folder, remove tooling
+earlier releases shipped, remove capture triggers they installed, and rewrite
+the protocol region of `AGENTS.md`. Existing fragments are never rewritten.

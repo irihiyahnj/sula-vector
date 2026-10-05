@@ -127,14 +127,6 @@ def tree_digest(tree: dict[str, tuple[str, int]]) -> str:
     return digest.hexdigest()
 
 
-def select_tree(tree: dict[str, tuple[str, int]], scope: list[str]) -> dict[str, tuple[str, int]]:
-    if not scope or "." in scope:
-        return tree
-    stems = [Path(s).as_posix().rstrip("/") for s in scope]
-    return {p: value for p, value in tree.items()
-            if any(p == s or p.startswith(s + "/") for s in stems)}
-
-
 def _encode_path(rel: str) -> str:
     """JSON quoting preserves leading whitespace and controls in a one-line delta."""
     return json.dumps(rel, ensure_ascii=False)

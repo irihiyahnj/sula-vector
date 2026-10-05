@@ -22,16 +22,15 @@ Thanks for improving Sula Vector.
 For substantial code or template changes, run:
 
 ```bash
-python3 -m py_compile tools/sula_vector/*.py tools/sula_vector/skills/*.py tools/sula_vector/hooks/*.py
+python3 -m py_compile tools/sula_vector/*.py tools/sula_vector/skills/*.py
 python3 -m unittest discover -s tools/sula_vector/tests -v
-python3 tools/sula_vector/skills/finish.py --project-root .
-python3 tools/sula_vector/render.py . --for-agent > /dev/null
+python3 tools/sula_vector/render.py . --view doctor
 python3 tools/sula_vector/render.py tools/sula_vector/example --view doctor
+python3 tools/sula_vector/tests/handoff_scenarios.py > /dev/null
 ```
 
-Mechanical capture is part of verification too: after the working tree
-changes, run `python3 tools/sula_vector/skills/witness.py --project-root .`
-and make sure `--view doctor` stays clean (D5).
+Record why with `note.py`, and change the rule sheet with `rules.py` when a
+standing rule changes. The commit message carries the why of the commit.
 
 ## Pull Request Expectations
 

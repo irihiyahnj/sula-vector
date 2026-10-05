@@ -9,8 +9,9 @@ each of which records only its own delta. Truth stays in fragments (B2, B4).
     python3 witness.py --project-root .
     python3 witness.py --project-root . --label "季度提案定稿" --refs <decision-id>
 
-Silent and non-appending when nothing changed (C7). Run it from a hook, a
-cron, or by hand — the substrate schedules, Sula does not (B7).
+Optional. On git the history already records what changed; witness is for
+folders without version control. Silent and non-appending when nothing
+changed. Run it by hand or from any scheduler the substrate already has.
 """
 
 from __future__ import annotations
@@ -21,7 +22,7 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
-from render import lane_of, load_fragments, time_key
+from render import load_fragments
 
 from append import append_fragment, utc_now
 from capture import (
@@ -56,8 +57,8 @@ def git_commits_since(root: Path, since_commit: str) -> list[str]:
     if not (root / ".git").exists() or not since_commit:
         return []
     # `%x00` separates hash+subject from the file list so a commit that only
-    # touched fragments/ (e.g. committing a previous witness) is dropped —
-    # otherwise the post-commit hook would witness its own commits forever (C7).
+    # touched fragments/ (e.g. committing a previous witness) is dropped;
+    # otherwise each capture would report the commit of the one before it.
     try:
         result = subprocess.run(
             [
@@ -90,36 +91,6 @@ def git_commits_since(root: Path, since_commit: str) -> list[str]:
     return out
 
 
-def deliberate_since_last_capture(frags: list) -> list[str]:
-    """Judgments and directions written since the previous capture.
-
-    Recorded into the witness rather than inferred later, because only the
-    runtime knows the window. A renderer looking at finished fragments can only
-    guess from proximity, and every proximity rule is discharged by the next
-    unrelated append — which is how an omission evaporates instead of being
-    inherited.
-
-    The lower bound is inclusive because fragment time has second resolution: a
-    commit and the judgment behind it routinely land in the same second, and
-    dropping that judgment would report a change nothing claims while the why
-    sits right there. Judgments a previous capture already claimed are excluded,
-    so the inclusive bound cannot credit one judgment to two windows.
-    """
-    last_capture = ""
-    claimed: set[str] = set()
-    for f in frags:
-        if f.kind == "witness":
-            last_capture = f.time
-            claimed.update(f.id_list("explained_by"))
-    return [
-        f.id
-        for f in frags
-        if time_key(f.time) >= time_key(last_capture)
-        and f.id not in claimed
-        and lane_of(f) in {"judgment", "direction"}
-    ]
-
-
 def last_witness_commit(frags: list) -> str:
     for f in reversed(frags):
         if f.kind == "witness" and f.get("commit"):
@@ -140,7 +111,6 @@ def write_witness(
     git: dict[str, str],
     commits: list[str],
     baseline: bool,
-    explained_by: list[str],
     parents: list[str] | None = None,
     snapshot: bool = False,
     patterns: list[str] | None = None,
@@ -152,7 +122,7 @@ def write_witness(
     )
     fields = {
         "kind": "witness", "refs": refs, "tags": ["witness", "skill"],
-        "explained_by": explained_by, "summary": headline, "substrate": substrate,
+        "summary": headline, "substrate": substrate,
         "files_added": len(added), "files_changed": len(changed), "files_removed": len(removed),
         "tree_files": len(tree), "tree_digest": tree_digest(tree), "hash_method": "sha256",
         "baseline": baseline, **git,
@@ -232,7 +202,6 @@ def main(argv: list[str] | None = None) -> int:
     commits = git_commits_since(root, last_witness_commit(frags))
     substrate = "git" if git.get("commit") else "folder"
     baseline = witness_count == 0
-    explained_by = deliberate_since_last_capture(frags)
 
     if not (added or changed or removed or commits or baseline or (args.reconcile and len(heads) > 1)):
         print("[witness] no change")
@@ -260,7 +229,6 @@ def main(argv: list[str] | None = None) -> int:
         git=git,
         commits=commits,
         baseline=baseline,
-        explained_by=explained_by,
         parents=heads,
         snapshot=args.reconcile,
         patterns=patterns,
@@ -269,11 +237,6 @@ def main(argv: list[str] | None = None) -> int:
         f"[witness] + witness  {target.name}  "
         f"(+{len(added)} ~{len(changed)} -{len(removed)}, {len(commits)} commit(s))"
     )
-    if not explained_by and not baseline and (added or changed or removed):
-        print(
-            f"[witness] nothing claims this change — settle it with "
-            f"`note.py {args.project_root} --kind decision --explains {target.stem} \"<why>\"`"
-        )
 
     if args.no_artifacts:
         return 0
