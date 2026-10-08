@@ -127,7 +127,7 @@ def migrate_change_records(root: Path, out: Path) -> int:
         return 0
     count = 0
     for f in sorted(src.glob("*.md")):
-        if f.name in {"_template.md", "README.md"}:
+        if f.name in {"_template.md", "README.md"} or f.name.startswith("."):
             continue
         parsed = parse_date_prefix(f.name)
         if parsed is None:
@@ -154,7 +154,7 @@ def migrate_releases(root: Path, out: Path) -> int:
         return 0
     count = 0
     for f in sorted(src.glob("*.md")):
-        if f.name in {"_template.md", "README.md"}:
+        if f.name in {"_template.md", "README.md"} or f.name.startswith("."):
             continue
         parsed = parse_date_prefix(f.name)
         if parsed is None:
@@ -181,7 +181,7 @@ def migrate_incidents(root: Path, out: Path) -> int:
         return 0
     count = 0
     for f in sorted(src.glob("*.md")):
-        if f.name in {"_template.md", "README.md"}:
+        if f.name in {"_template.md", "README.md"} or f.name.startswith("."):
             continue
         parsed = parse_date_prefix(f.name)
         if parsed is None:
@@ -365,7 +365,10 @@ def install_tooling(root: Path, canonical_tools: Path) -> dict[str, int]:
             continue
         dst = target / rel
         dst.parent.mkdir(parents=True, exist_ok=True)
-        shutil.copy2(src, dst)
+        try:
+            shutil.copy2(src, dst)
+        except OSError:
+            shutil.copy(src, dst)
         copied += 1
     retired = 0
     for rel in RETIRED_FILES:
