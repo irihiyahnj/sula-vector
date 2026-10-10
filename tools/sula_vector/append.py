@@ -1,11 +1,11 @@
-"""Publish complete, immutable fragments using filesystem no-replace semantics."""
+"""Publish immutable, self-verifying fragments using O_EXCL no-replace creation."""
 
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import re
-import tempfile
 from datetime import datetime, timezone
 from pathlib import Path
 from uuid import uuid4
@@ -50,26 +50,37 @@ def fragment_text(fields: dict[str, object], body: str) -> str:
     return text
 
 
+def seal(text: str) -> str:
+    """Put the body's sha256 first in the header so readers can detect a torn write."""
+    close = text.find("\n---\n", 4)
+    if not text.startswith("---\n") or close == -1:
+        raise ValueError("fragment text needs a closed `---` header")
+    digest = hashlib.sha256(text[close + 5:].strip().encode("utf-8")).hexdigest()
+    return f"---\nsha256: {digest}\n{text[4:]}"
+
+
 def publish(target: Path, text: str) -> bool:
     """False means the destination already exists, never that it was overwritten.
 
-    A same-directory hard link publishes the complete inode atomically without
-    replacing another writer's file. A crash can leave only an ignored .tmp,
-    never a partially written .md. Unsupported substrates fail explicitly.
+    O_EXCL gives no-replace creation on every filesystem, including exFAT and
+    network mounts that lack hard links. Atomic visibility is not assumed: a
+    crash can leave a torn file, which the loader rejects because the sealed
+    sha256 no longer matches the body.
     """
-    fd, staging = tempfile.mkstemp(prefix=".append-", suffix=".tmp", dir=target.parent)
+    sealed = seal(text)
+    try:
+        fd = os.open(target, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o666)
+    except FileExistsError:
+        return False
     try:
         with os.fdopen(fd, "w", encoding="utf-8") as handle:
-            handle.write(text)
+            handle.write(sealed)
             handle.flush()
             os.fsync(handle.fileno())
-        try:
-            os.link(staging, target)
-        except FileExistsError:
-            return False
-        return True
-    finally:
-        os.unlink(staging)
+    except BaseException:
+        target.unlink(missing_ok=True)
+        raise
+    return True
 
 
 def append_fragment(

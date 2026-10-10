@@ -68,15 +68,51 @@ class TestImmutablePublication(ProjectCase):
 
     def test_publish_collision_never_replaces_content(self):
         target = self.frags / "reserved.md"
-        self.assertTrue(publish(target, "first"))
-        self.assertFalse(publish(target, "second"))
-        self.assertEqual(target.read_text(), "first")
+        first = "---\nkind: fact\n---\nfirst\n"
+        self.assertTrue(publish(target, first))
+        self.assertFalse(publish(target, "---\nkind: fact\n---\nsecond\n"))
+        self.assertIn("first", target.read_text())
+        self.assertNotIn("second", target.read_text())
 
-    def test_failed_publication_leaves_no_partial_fragment(self):
-        with patch("append.os.link", side_effect=OSError("unsupported")):
+    def test_publish_does_not_need_hard_links(self):
+        with patch("os.link", side_effect=OSError("unsupported")):
+            path = append_fragment(self.frags, "x", {"kind": "fact"}, "body")
+        self.assertEqual([f.body for f in load_fragments(self.frags)], ["body"])
+        self.assertEqual(list(self.frags.iterdir()), [path])
+
+    def test_failed_write_leaves_no_file(self):
+        with patch("append.os.fsync", side_effect=OSError("disk full")):
             with self.assertRaises(OSError):
                 append_fragment(self.frags, "x", {"kind": "fact"}, "body")
         self.assertEqual(list(self.frags.iterdir()), [])
+
+    def test_torn_files_are_reported_and_never_rendered(self):
+        good = append_fragment(self.frags, "ok", {"kind": "fact"}, "complete body")
+        text = good.read_text()
+        torn = {
+            "empty": "",
+            "unclosed-header": text[: text.index("kind:") + 4],
+            "short-body": text[:-6] + "\n",
+        }
+        for name, content in torn.items():
+            (self.frags / f"2026-09-06T00-00-00Z--torn-{name}.md").write_text(content)
+        frags, problems = load_report(self.frags)
+        self.assertEqual([f.body for f in frags], ["complete body"])
+        self.assertEqual(sorted(p.code for p in problems), ["incomplete-fragment"] * 3)
+        self.assertFalse(view_doctor(frags, problems)["ok"])
+
+    def test_dot_files_are_not_fragments(self):
+        append_fragment(self.frags, "ok", {"kind": "fact"}, "body")
+        (self.frags / "._companion.md").write_bytes(b"\x00\x05\x16\x07\xb0")
+        frags, problems = load_report(self.frags)
+        self.assertEqual(len(frags), 1)
+        self.assertEqual(problems, [])
+
+    def test_legacy_fragment_without_sha256_still_loads(self):
+        (self.frags / "2026-05-01T00-00-00Z--old.md").write_text("---\nkind: fact\n---\nold body\n")
+        frags, problems = load_report(self.frags)
+        self.assertEqual([f.body for f in frags], ["old body"])
+        self.assertEqual(problems, [])
 
     def test_same_second_verification_results_both_survive(self):
         gid = self.add("goal", verifier_ref="shell: true")

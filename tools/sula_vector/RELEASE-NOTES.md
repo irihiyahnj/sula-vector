@@ -1,5 +1,13 @@
 # Sula Vector — Release Notes
 
+## Unreleased — Works on exFAT and network mounts
+
+Fragments are created with `O_EXCL` and carry a `sha256` of the body instead of
+relying on hard-link publication, which exFAT/FAT32, SMB, NFS and WebDAV often
+lack. Torn files are excluded by the loader and reported by `doctor` as
+`incomplete-fragment`. Dot files such as macOS `._*` are ignored. Older
+fragments without `sha256` still load.
+
 ## v1.4.0 — The boot carries the rules (stable)
 
 **Release date:** 2026-10-05

@@ -67,10 +67,19 @@ optional and nothing gates on it.
 
 ## Storage and sync
 
-`append.py` stages a complete file inside `fragments/`, flushes it, and
-publishes it with an atomic no-replace hard link; names carry microsecond time
-and a random suffix. An unsupported filesystem fails explicitly instead of
-falling back to an overwriting write.
+`append.py` creates each fragment with `O_EXCL` (never replaces a file) and
+writes the body's sha256 as the first header line; names carry microsecond time
+and a random suffix. No hard links or atomic rename are needed, so exFAT drives
+and SMB/NFS/WebDAV mounts work. A crash can leave a torn file; the loader
+excludes it and `doctor` reports `incomplete-fragment`. Fragments written
+before the checksum existed still load.
+
+Verified: local disks, exFAT (disk image) and SMB shares (concurrent writers,
+`doctor` clean). Not verified: NFS, WebDAV, sshfs, AFP and cloud-sync folders;
+they should work if `O_EXCL` and `fsync` are honoured, but that is untested.
+macOS writes a `._<name>` companion beside every file on filesystems without
+native extended attributes (exFAT, SMB). Sula ignores dot files; remove them
+with `dot_clean <folder>` if they bother you.
 
 `update-from-canonical.sh` / `migrate.py` refresh this folder, remove tooling
 earlier releases shipped, remove capture triggers they installed, and rewrite

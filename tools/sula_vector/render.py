@@ -12,6 +12,7 @@ ever silently dropped. Structural problems surface through `--view doctor`.
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import re
 import sys
@@ -201,7 +202,8 @@ def load_report(folder: Path) -> tuple[list[Fragment], list[Problem]]:
     frags: list[Fragment] = []
     problems: list[Problem] = []
     for path in sorted(folder.rglob("*.md")):
-        if path.name in {"AGENTS.md", "README.md"}:
+        # Dot files are never fragments; macOS writes ._* AppleDouble companions on exFAT.
+        if path.name in {"AGENTS.md", "README.md"} or path.name.startswith("."):
             continue
         try:
             text = path.read_text(encoding="utf-8")
@@ -211,6 +213,22 @@ def load_report(folder: Path) -> tuple[list[Fragment], list[Problem]]:
 
         meta, body = _parse_frontmatter(text)
         fid, derived_time = derive_identity(path)
+
+        # A writer that crashed mid-write leaves an empty, unclosed or
+        # checksum-mismatched file; it is reported and excluded, never rendered.
+        unclosed = text.startswith("---\n") and not meta
+        digest = meta.pop("sha256", None)
+        if not text.strip():
+            torn = "empty file"
+        elif unclosed:
+            torn = "unclosed header"
+        elif digest is not None and digest != hashlib.sha256(body.encode("utf-8")).hexdigest():
+            torn = "body does not match sha256"
+        else:
+            torn = ""
+        if torn:
+            problems.append(Problem("incomplete-fragment", fid, str(path), torn))
+            continue
 
         if not meta:
             problems.append(

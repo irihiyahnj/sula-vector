@@ -551,13 +551,15 @@ files. Filesystem semantics resolve concurrency. Sula does not invent locking,
 transactions, or consensus. The one place parallel writers meet is the rule
 sheet, and a collision there surfaces as a fork rather than a lost write.
 
-Every built-in writer publishes through `append.py`: it stages the complete
-file inside `fragments/`, flushes it, and publishes it with an atomic,
-no-replace hard link. Names carry microsecond time and a random suffix, so
-independent writers do not collide; an existing file is never overwritten. A
-crash can leave only an ignored `.tmp` staging file, never a partial fragment.
-A filesystem without hard-link support fails explicitly instead of falling
-back to an overwriting write.
+Every built-in writer publishes through `append.py`: it creates the file with
+`O_EXCL`, so an existing file is never overwritten, and writes the sha256 of the
+body as the first header line. Names carry microsecond time and a random suffix,
+so independent writers do not collide. Nothing depends on hard links or atomic
+rename, so exFAT drives and network mounts work. Visibility is not atomic: a
+crash can leave an empty, unclosed or checksum-mismatched file. The loader
+excludes it and `doctor` reports `incomplete-fragment`. `sha256` is optional on
+read, so earlier fragments stay valid. Dot files (e.g. macOS `._*`) are not
+fragments.
 
 ---
 
