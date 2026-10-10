@@ -32,6 +32,7 @@ TOOLING_FILES = (
     "capture.py",
     "note.py",
     "rules.py",
+    "turn.py",
     "update-from-canonical.sh",
     "AGENTS.md",
     "README.md",
@@ -496,9 +497,16 @@ def host_pointer_text(title: str) -> str:
         "python3 tools/sula_vector/render.py . --for-agent\n"
         "```\n\n"
         "Follow the **Rules** section of that output. Record decisions with\n"
-        "`tools/sula_vector/note.py`; change a rule with `tools/sula_vector/rules.py`.\n\n"
+        "`tools/sula_vector/note.py`; change a rule with `tools/sula_vector/rules.py`.\n"
+        "Close every turn with `tools/sula_vector/turn.py` as AGENTS.md describes.\n\n"
         "Nothing in this file overrides AGENTS.md. Legacy Sula 0.18.x instructions\n"
         "(`scripts/sula.py`, `.sula/`, `STATUS.md`) are historical reference only.\n"
+    )
+
+
+def _v14_pointer_text(title: str) -> str:
+    return host_pointer_text(title).replace(
+        "Close every turn with `tools/sula_vector/turn.py` as AGENTS.md describes.\n", ""
     )
 
 
@@ -542,10 +550,10 @@ def install_host_pointers(root: Path) -> tuple[int, int]:
             existing = target.read_text(encoding="utf-8")
             if existing == text:
                 continue
-            previous = _v13_pointer_text(title)
+            previous = {_v13_pointer_text(title), _v14_pointer_text(title)}
             if rel.endswith(".mdc"):
-                previous = CURSOR_FRONTMATTER + previous
-            if existing.strip() and existing != previous:
+                previous = {CURSOR_FRONTMATTER + text for text in previous}
+            if existing.strip() and existing not in previous:
                 skipped += 1
                 continue
         target.parent.mkdir(parents=True, exist_ok=True)
@@ -647,6 +655,11 @@ def main(argv: list[str] | None = None) -> int:
         counts["tooling_files_retired"] = tooling.get("retired", 0)
         for note in retire_capture_triggers(root):
             print(f"  trigger          : {note}")
+        from turn import ensure_local_only
+        try:
+            counts["transcripts"] = ensure_local_only(root)
+        except RuntimeError as exc:
+            counts["transcripts"] = f"NOT local: {exc}"
         if tooling["skipped_self"]:
             counts["tooling_skipped_self"] = 1
     if not args.no_agents and not args.dry_run:

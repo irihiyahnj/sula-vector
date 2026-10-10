@@ -160,6 +160,10 @@ def main(argv: list[str] | None = None) -> int:
     if args.kind == "rules":
         print("the rule sheet is written with rules.py, which validates it", file=sys.stderr)
         return 2
+    if args.kind == "transcript":
+        print("transcripts are written with turn.py, which redacts them and keeps them out of git",
+              file=sys.stderr)
+        return 2
 
     now = now_utc()
     stamp = now.isoformat(timespec="microseconds").replace("+00:00", "Z")

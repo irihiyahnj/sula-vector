@@ -1,6 +1,37 @@
 # Sula Vector — Release Notes
 
-## Unreleased — Works on exFAT and network mounts
+## v1.5.0 — Every turn is kept, and the user can see it (stable)
+
+**Release date:** 2026-10-10
+**Convention version:** 1.4. Every fragment written under 1.0–1.3 still parses.
+
+**Why.** Since v1.4 removed the unexplained-change gate, recording depends on
+the agent deciding a judgment is worth writing. Measured across 8 adopted git
+projects: 11 of 29 commit-days had no judgment, and conclusions given only in
+dialogue cannot be detected by any outside check. The fix removes the decision
+instead of trying to make the model decide better.
+
+- **`turn.py`.** Every turn ends with it: the agent pipes the user's message and
+  its reply verbatim on stdin; the text is redacted and appended as
+  `kind: transcript`, and the receipt `[sula] turn recorded (…)` plus the turn
+  mark are printed for the user. No receipt means not recorded, in any host.
+  No host log is parsed; a host hook may feed the same command.
+- **Local only.** `fragments/*--transcript-*` is kept in the project's
+  `.gitignore` (written even without git); the turn is refused when
+  `git check-ignore` says git would still track a transcript. `migrate.py`
+  adds the line on update.
+- **Redaction** by secret shape: private keys, provider tokens, JWTs, URL
+  passwords, bearer headers, values of password/secret/token/api-key names.
+- **Views.** Transcripts are excluded from `--for-agent`, `journal` and
+  `changes-summary`; the boot says how many exist and how to grep them.
+  `note.py --kind transcript` is refused.
+- **Protocol.** AGENTS.md's end of turn is now doctor, then `turn.py`, every
+  turn; host pointers mention it (pointers still holding the v1.4 text are
+  replaced on update).
+- Measured cost of writing the reply twice: 3–10% of a session's tokens.
+- Not verified: feeding from host hooks; that is optional and left to each host.
+
+### Also in this release — works on exFAT and network mounts
 
 Fragments are created with `O_EXCL` and carry a `sha256` of the body instead of
 relying on hard-link publication, which exFAT/FAT32, SMB, NFS and WebDAV often

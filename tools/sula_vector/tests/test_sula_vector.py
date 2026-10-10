@@ -583,8 +583,8 @@ class TestVerifierShellSkill(unittest.TestCase):
 
 
 class TestConventionVersion(unittest.TestCase):
-    def test_version_is_one_three(self):
-        self.assertEqual(CONVENTION_VERSION, "1.3")
+    def test_version_is_one_four(self):
+        self.assertEqual(CONVENTION_VERSION, "1.4")
 
 
 class TestDerivedIdentity(unittest.TestCase):

@@ -24,6 +24,10 @@ structural only. See [The rule sheet (1.3)](#the-rule-sheet-13).
 Every fragment written under 1.0–1.2 still parses. Fields that 1.3 no longer
 reads are ignored; no fragment is rewritten.
 
+v1.4 adds **closing a turn**: every turn ends with `turn.py`, which keeps the
+turn's dialogue verbatim as a local, git-ignored `kind: transcript` fragment
+and prints the receipt the user sees. See [Closing a turn (1.4)](#closing-a-turn-14).
+
 ---
 
 ## The one-line model
@@ -671,11 +675,47 @@ folders without git). The full skills contract is in
 Adding a new skill is one action: drop a script into the skills folder.
 Removing one is one action: delete it. No project changes are required.
 
+## Closing a turn (1.4)
+
+Recording a judgment depends on the agent deciding it is worth recording; a
+missed one leaves no trace (measured: 11 of 29 commit-days across 8 projects
+had no judgment). Closing a turn needs no decision. At the end of **every**
+turn the agent pipes the user's message and its reply, verbatim, into:
+
+```
+$ python3 tools/sula_vector/turn.py . --since <session-start-ISO> <<'SULA_TURN'
+## User
+...
+## Reply
+...
+SULA_TURN
+[sula] turn recorded (1834 chars, git-ignored, stays on this machine)
+[sula] +1 this turn:
+  + decision           对 Acme 采用月度交付节奏
+```
+
+- The receipt is the user's evidence, in any host. A reply that ends without
+  it was not recorded; the user sees that at once instead of finding out later.
+- The input is any text. Sula parses no host format, because the reader of a
+  transcript is a model. Host hooks may feed the same command; the protocol
+  does not depend on one.
+- The text is redacted by secret shape and appended as `kind: transcript`
+  (evidence lane) with `redacted: <count>`. `note.py --kind transcript` is
+  refused, so every transcript passes redaction.
+- Transcripts stay on the machine. `turn.py` keeps `fragments/*--transcript-*`
+  in the project's `.gitignore` and refuses the turn when `git check-ignore`
+  reports that git would still track one. Judgments and the rule sheet stay in
+  git as before; they must remain sufficient on their own, so no view depends
+  on a transcript being present.
+- Transcripts are not in the boot, the journal or the turn mark. They are
+  searched (`grep -il '<term>' fragments/*--transcript-*`) and can be re-read
+  later to recover judgments nobody recorded.
+
 ## Turn-mark for user visibility
 
 The convention itself is silent (C5, C7). The agent protocol asks the agent to
-show its user a mark at the end of any turn in which it appended fragments.
-The mark is generated from the existing `--since` filter:
+show its user a mark at the end of every turn; `turn.py --since` prints it
+after the receipt. The mark is generated from the existing `--since` filter:
 
 ```
 $ python3 tools/sula_vector/render.py . --view changes-summary --since <session-start-ISO>
@@ -684,8 +724,8 @@ $ python3 tools/sula_vector/render.py . --view changes-summary --since <session-
   ✓ verification-fact  PASS  goal-q3-renewal
 ```
 
-If nothing was appended this turn, the output is `[sula] no changes` and the
-host displays nothing (C7).
+If nothing else was appended, `render.py --view changes-summary` prints
+`[sula] no changes` and `turn.py` prints only the receipt.
 
 The session-start timestamp is **host-local** state, not Sula state. Sula
 remains stateless. The agent notes the time at boot and calls
@@ -730,9 +770,10 @@ which fields they give meaning to. Bumps are rare. Adding a recommended kind, a
 new view, or a new optional field is **not** a bump — projects add those
 locally without coordination.
 
-Current convention version: `1.3` (Sula Vector v1.4.0, 2026-10-05). Every
-1.0–1.2 fragment still parses; fields 1.3 no longer reads are ignored. Readers
-must accept the microsecond filenames introduced in 1.2.
+Current convention version: `1.4` (Sula Vector v1.5.0, 2026-10-10). Every
+1.0–1.3 fragment still parses; fields 1.3 no longer reads are ignored. Readers
+must accept the microsecond filenames introduced in 1.2, the `sha256` header
+line, and must keep `kind: transcript` out of the boot.
 
 See `tools/sula_vector/RELEASE-NOTES.md` for release notes and the upgrade
 path.

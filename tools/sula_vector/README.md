@@ -10,7 +10,33 @@ python3 tools/sula_vector/render.py . --for-agent        # boot: rules, open goa
 python3 tools/sula_vector/note.py . --kind decision --title "<one line>" "<why>"
 python3 tools/sula_vector/rules.py . edit --match "<unique text>" --why "<why>" "<new rule>"
 python3 tools/sula_vector/render.py . --view doctor      # structural integrity, exit 1 on problems
+python3 tools/sula_vector/turn.py . --since <session_start> < dialogue.txt   # close the turn, every turn
 ```
+
+## Closing a turn
+
+A judgment is recorded only if the agent decides it is worth recording, and a
+missed one is silent. `turn.py` removes that decision: at the end of every
+turn the agent passes the user's message and its reply verbatim on stdin. The
+text is redacted, appended as a `kind: transcript` fragment and a receipt is
+printed — `[sula] turn recorded (…)` — which the agent shows the user. No
+receipt means the turn was not recorded, in any host.
+
+- **Any host, any format.** Nothing parses a host's log; whatever arrives on
+  stdin is kept. A host hook may feed the same command; none is required.
+- **Local only.** `turn.py` adds `fragments/*--transcript-*` to the project's
+  `.gitignore` (also without git, so a later `git init` cannot commit them) and
+  refuses the turn if `git check-ignore` says git would still track one.
+  Judgments and rules keep travelling with the code; transcripts never leave
+  the machine, so a lost disk loses them.
+- **Redaction** replaces secrets by shape — private keys, provider tokens
+  (`sk-`, `ghp_`, `AKIA`, `xox*-`, `AIza`, JWTs …), URL passwords, bearer
+  headers and values of `password`/`secret`/`token`/`api_key`-like names. Names
+  and business content are not secrets in this sense and stay.
+- **Not in the boot.** Transcripts are excluded from `--for-agent`, the journal
+  and the turn mark; search them with `grep -il '<term>' fragments/*--transcript-*`.
+  A later, stronger model can re-read them to find judgments nobody recorded.
+- Measured cost of writing the reply twice: 3–10% of a session's tokens.
 
 ## The rule sheet
 

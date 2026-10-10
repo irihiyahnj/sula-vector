@@ -21,7 +21,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, Iterable
 
-CONVENTION_VERSION = "1.3"
+CONVENTION_VERSION = "1.4"
 
 TIER_ORDER = ["highest", "invariant", "aesthetic", "discipline", "anti-pattern"]
 PROJECT_TIER = "project"
@@ -52,6 +52,9 @@ LANE_BY_KIND = {
 }
 
 RECENT_JUDGMENTS = 10
+# Turn-by-turn dialogue written by turn.py. Kept for search and re-reading,
+# never part of the boot, journal or turn mark.
+TRANSCRIPT_KIND = "transcript"
 
 FILENAME_TIME_RE = re.compile(
     r"^(\d{4}-\d{2}-\d{2})T(\d{2})-(\d{2})-(\d{2}(?:\.\d{1,6})?)Z(?:--(.*))?$"
@@ -499,7 +502,7 @@ def view_journal(frags: list[Fragment]) -> list[dict[str, Any]]:
     """Day-by-day project journal: what was decided, what was produced."""
     days: dict[str, dict[str, list[dict[str, Any]]]] = {}
     for f in frags:
-        if f.kind == "principle":
+        if f.kind in {"principle", TRANSCRIPT_KIND}:
             continue
         day = f.time[:10] or "unknown"
         bucket = days.setdefault(day, {lane: [] for lane in LANES})
@@ -668,6 +671,8 @@ def render_doctor_block(report: dict[str, Any]) -> str:
 
 
 def render_for_agent(frags: list[Fragment], project_name: str = "") -> str:
+    transcripts = sum(1 for f in frags if f.kind == TRANSCRIPT_KIND)
+    frags = [f for f in frags if f.kind != TRANSCRIPT_KIND]
     superseded = supersession_map(frags)
     activity = [f for f in frags if f.kind != "principle"]
     lines: list[str] = [
@@ -745,9 +750,15 @@ def render_for_agent(frags: list[Fragment], project_name: str = "") -> str:
         "Read one with `cat fragments/<id>.md`; a rule's bracketed tag is a filename prefix "
         "(`ls fragments | grep '^<tag>'`); search a topic with `grep -ril '<term>' fragments/`."
     )
+    if transcripts:
+        lines.append(
+            f"The dialogue of past turns is in {transcripts} transcript fragments, local to this "
+            "machine: `grep -il '<term>' fragments/*--transcript-*` finds what was actually said."
+        )
     lines.append(
         "Record a decision with `note.py . --kind decision --title \"<one line>\" \"<why>\"`. "
-        "Change a rule with `rules.py . add|edit|remove ... --why \"<why>\"`. Never edit a fragment."
+        "Change a rule with `rules.py . add|edit|remove ... --why \"<why>\"`. Never edit a fragment. "
+        "Close every turn with `turn.py` as AGENTS.md describes."
     )
     return "\n".join(lines).rstrip() + "\n"
 
@@ -843,7 +854,7 @@ def main(argv: list[str] | None = None) -> int:
     selected = {f.id for f in filtered}
 
     if args.view == "changes-summary":
-        activity = [f for f in filtered if f.kind != "principle"]
+        activity = [f for f in filtered if f.kind not in {"principle", TRANSCRIPT_KIND}]
         if args.json:
             json.dump(view_changes_summary(activity), sys.stdout, ensure_ascii=False)
             sys.stdout.write("\n")
