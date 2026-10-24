@@ -72,6 +72,7 @@ substrate's job (Tier B7).
 | skill | what it does |
 | ----- | ------------ |
 | `witness.py` | Optional mechanical evidence for folders without git. Scans the project folder, diffs against the state folded out of prior `kind: witness` fragments, appends one witness fragment recording path + content hash for every added/changed/removed file. Records `commit`/`branch` and the commits since the last witness on git substrates; emits one `kind: artifact` fragment per new document. Silent when nothing changed. |
+| `recall.py` | Read-only lookup. Lists every judgment and goal in force, traces a record by id prefix (supersession, citing rules, refs, its turn and transcript), or matches literal terms across fragments and transcripts. Appends nothing. |
 | `verifier-shell.py` | Runs a shell command as a goal verifier. Reads goals whose `verifier_ref` is `shell:<command>`, runs the command, appends a `kind: verification-fact` with `passed: true/false`. |
 
 On a git repository the history already records what changed and the commit

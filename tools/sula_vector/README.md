@@ -7,8 +7,11 @@ publish complete new fragments. Python standard library only.
 
 ```bash
 python3 tools/sula_vector/render.py . --for-agent        # boot: rules, open goals, recent judgments
-python3 tools/sula_vector/note.py . --kind decision --title "<one line>" "<why>"
-python3 tools/sula_vector/rules.py . edit --match "<unique text>" --why "<why>" "<new rule>"
+python3 tools/sula_vector/skills/recall.py --project-root . [<id-prefix> | <term> ...]   # look up
+python3 tools/sula_vector/note.py . --session <session_start> --tags "<search words>" \
+  --kind decision --title "<one line>" "<why>"
+python3 tools/sula_vector/rules.py . edit --session <session_start> --match "<unique text>" \
+  --why "<why>" "<new rule>"
 python3 tools/sula_vector/render.py . --view doctor      # structural integrity, exit 1 on problems
 python3 tools/sula_vector/turn.py . --since <session_start> < dialogue.txt   # close the turn, every turn
 ```
@@ -34,8 +37,14 @@ receipt means the turn was not recorded, in any host.
   headers and values of `password`/`secret`/`token`/`api_key`-like names. Names
   and business content are not secrets in this sense and stay.
 - **Not in the boot.** Transcripts are excluded from `--for-agent`, the journal
-  and the turn mark; search them with `grep -il '<term>' fragments/*--transcript-*`.
-  A later, stronger model can re-read them to find judgments nobody recorded.
+  and the turn mark; `recall.py` searches them with the rest and traces a
+  judgment to the transcript of its turn.
+- **One turn, one session.** `--since` signs the transcript with the session
+  start, and `note.py --session` / `rules.py --session` sign judgments the same
+  way. The mark lists only this session's records since its previous
+  transcript; unsigned ones in that window show as `?`. A turn without any
+  judgment prints `[sula] ! no judgment this turn` unless `--no-judgment "<why>"`
+  gives the reason, which the transcript keeps.
 - Measured cost of writing the reply twice: 3–10% of a session's tokens.
 
 ## The rule sheet
@@ -83,6 +92,29 @@ verification passed.
 
 `--for-agent`, `--view list | journal | effective | goals | doctor | changes-summary`,
 filtered by `--kind --lane --tag --ref --since --until`, with `--json`.
+
+## Recall
+
+The reader of a vector is a model, so lookup navigates by topic and picks by
+meaning instead of guessing a word. The writer files each record under a
+`--topic` (reusing the boot's Topics line) and adds search words as `--tags`;
+the directory is computed from the fragments, never stored:
+
+```bash
+python3 tools/sula_vector/skills/recall.py --project-root .                 # topic directory
+python3 tools/sula_vector/skills/recall.py --project-root . --topic 4g      # records in force under it
+python3 tools/sula_vector/skills/recall.py --project-root . 2026-10-22T14-44 # trace a record (a rule's tag works)
+python3 tools/sula_vector/skills/recall.py --project-root . 断网 killswitch  # any term, literal, case-blind
+```
+
+A trace shows what the record replaced, what replaced it and what is in force
+now, the current rules citing it, references both ways, the other records of
+its turn and that turn's transcript — exact for signed fragments, labelled
+inferred for unsigned ones. A prefix shared by records of different times lists
+them instead. Term hits rank by terms matched, then in force before superseded,
+then newest; a superseded hit points at what replaced it. An annotation's
+`topic` and `tags` count for every fragment in its `refs`, so old records can be
+filed and given search words without touching them. Everything is computed at read time.
 
 ## Evidence
 

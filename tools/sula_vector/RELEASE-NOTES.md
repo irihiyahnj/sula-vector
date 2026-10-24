@@ -1,5 +1,74 @@
 # Sula Vector — Release Notes
 
+## v1.6.0 — Recall by meaning, and each turn knows whose it is
+
+**Release date:** 2026-10-24
+**Convention version:** 1.5. Every fragment written under 1.0–1.4 still parses;
+nothing is rewritten.
+
+**Why.** Observed on one adopted vector (651 fragments, 258 judgments in force,
+two agent CLIs writing at the same time):
+
+- Two sessions open together claimed each other's fragments. The mark was a
+  time window from `--since`, so `+N this turn` listed another window's records,
+  and a turn with nothing recorded looked recorded.
+- Lookup was `grep` with a guessed word. The reader is always a model, yet it
+  had to guess the exact word the writer used ("断网" against
+  "killswitch drop"), and superseded fragments came back unmarked beside the
+  ones that replaced them.
+- Nothing led from a judgment to the dialogue it came out of, though both were
+  on disk.
+
+The changes:
+
+- **Topics.** A new `topic` field (`note.py --topic`) files a record under a
+  topic; `tags` stay for search words. Topic names are English kebab-case in
+  every project, and `note.py` refuses anything else, so agents writing in
+  different languages cannot split one subject into two topics. The boot carries one line, the topic
+  directory computed from the records in force, so writers reuse topics they
+  can see and readers know what the memory holds. Organising costs the writer a
+  few words once instead of costing every reader a full read: listing a whole
+  vector was 35 KB here and 109 KB on a 2178-fragment project, per lookup.
+  There is no stored index — loading 2178 fragments and rendering the boot
+  takes 0.2–0.5 s — and no vectors or services.
+- **`skills/recall.py`.** With no query it prints the topic directory with each
+  topic's newest record; `--topic` lists the records in force under a topic,
+  `--no-topic` those without one, `--all` every one. An id prefix (a
+  rule's source tag is one) traces a record: what it replaced, what replaced it
+  and what is in force now, the current rules citing it, references both ways,
+  the other records of its turn and that turn's transcript. Terms match
+  literally, case-blind, across fragments and transcripts, most terms first,
+  superseded hits pointing at what is in force. Read-only; every join happens at
+  read time, so records written before this release are found the same way.
+- **Sessions.** `note.py --session`, `rules.py --session` and `turn.py --since`
+  sign what they write with the session start. The turn mark counts only the
+  current session's records since its last transcript — this turn, not the
+  session — and shows unsigned ones in the window with `?`. Recall's turn
+  joins are exact for signed fragments and labelled *inferred* (nearest
+  transcript after) for unsigned ones.
+- **A turn without judgment says so.** When the session signed no judgment-lane
+  fragment this turn, `turn.py` prints `[sula] ! no judgment this turn` unless the agent
+  gives the reason with `--no-judgment "<why>"`, which is kept on the
+  transcript. Nothing is refused: the transcript is still written.
+- **Annotations lend topics and tags to what they ref.** An annotation in force
+  lends its `topic` and `tags` to every fragment in its `refs`, so an upgrading
+  agent files old records under topics without touching them: one full read
+  once, then never again. Annotations themselves are not listed as records.
+- **Protocol.** AGENTS.md signs every write with `--session`, asks for `--tags`
+  a later reader would search for, closes with `--no-judgment` when nothing was
+  judged, and looks things up through recall. The boot's lookup section points
+  there and says how many records the list holds. `migrate.py` now installs
+  `skills/recall.py`; a test fails if a shipped skill is missing from the list.
+
+**Upgrade.** `update-from-canonical.sh --project-root <path>`, then have an
+agent read `recall.py --all` once and append annotations that file the old
+records under topics. No fragment is rewritten. Existing fragments are unsigned, so until a session signs its writes
+the mark shows them with `?` and recall infers their turns.
+
+**Not verified:** whether models given the recall list answer lookup questions
+better than with grep. Only the mechanism is tested (tests, doctor, byte-stable
+replay); no exam has been run.
+
 ## v1.5.0 — Every turn is kept, and the user can see it (stable)
 
 **Release date:** 2026-10-10

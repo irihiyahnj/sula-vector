@@ -40,6 +40,7 @@ TOOLING_FILES = (
     "skills/README.md",
     "skills/witness.py",
     "skills/verifier-shell.py",
+    "skills/recall.py",
 )
 
 # Tooling earlier releases shipped. An update removes them, because a stale

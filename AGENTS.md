@@ -30,23 +30,36 @@ prefixes of the fragments that hold its reason; read them when you need the why
 ## During the turn
 
 Record a judgment whenever you choose a direction, revise one, correct a past
-claim, or assess state — one append each:
+claim, or assess state — one append each, in the turn it happens, not later:
 
 ```bash
-python3 tools/sula_vector/note.py . --kind decision --title "<one line>" "<why>"
-python3 tools/sula_vector/note.py . --kind correction --supersedes <id> "<what was wrong>"
-python3 tools/sula_vector/note.py . --kind goal --title "<outcome>" \
+python3 tools/sula_vector/note.py . --session <session_start> --topic <topic> \
+  --tags "<search words>" --kind decision --title "<one line>" "<why>"
+python3 tools/sula_vector/note.py . --session <session_start> --kind correction \
+  --supersedes <id> "<what was wrong>"
+python3 tools/sula_vector/note.py . --session <session_start> --kind goal --title "<outcome>" \
   --done-when "<condition>" --verifier "shell: <command>" "<context>"
-python3 tools/sula_vector/note.py . --kind fact --closes <goal-id> "<what closed it>"
+python3 tools/sula_vector/note.py . --session <session_start> --kind fact \
+  --closes <goal-id> "<what closed it>"
 ```
+
+`--session` signs the fragment, so the turn mark counts this session's records
+and no one else's. `--topic` files it under a topic from the boot's **Topics**
+line — topic names are English kebab-case whatever the conversation's
+language; make a new one only when none fits. `--tags` takes the words a later
+reader would search for: symptoms, names, paths, both languages. Both cost a
+few words once and spare every later reader a search.
 
 When a decision creates, changes or retires a standing rule, change the rule
 sheet in the same turn, one line at a time:
 
 ```bash
-python3 tools/sula_vector/rules.py . add --section "<heading>" --why "<why>" "<rule> [<source tag>]"
-python3 tools/sula_vector/rules.py . edit --match "<text in exactly one rule>" --why "<why>" "<new rule>"
-python3 tools/sula_vector/rules.py . remove --match "<text in exactly one rule>" --why "<why>"
+python3 tools/sula_vector/rules.py . add --session <session_start> --section "<heading>" \
+  --why "<why>" "<rule> [<source tag>]"
+python3 tools/sula_vector/rules.py . edit --session <session_start> \
+  --match "<text in exactly one rule>" --why "<why>" "<new rule>"
+python3 tools/sula_vector/rules.py . remove --session <session_start> \
+  --match "<text in exactly one rule>" --why "<why>"
 ```
 
 Write each rule so that the line alone is enough to act on: what must or must
@@ -91,20 +104,29 @@ SULA_TURN
 
 It redacts secrets, keeps the text as a `transcript` fragment that stays on
 this machine (`.gitignore` excludes it; the turn is refused if git would still
-track it) and prints a receipt. End your reply with its full output, from
-`[sula] turn recorded` through the `[sula] +N this turn:` block if one follows.
-A reply without that line tells the user the turn was not recorded; if
-`turn.py` fails, say so.
+track it), signs it with the session — which ends this turn — and prints a
+receipt and this turn's mark. If the turn recorded no judgment because nothing
+was decided, changed or assessed, add `--no-judgment "<why>"`; without it the
+mark says `! no judgment this turn`. End your reply with the full output, from
+`[sula] turn recorded` to its last line. A reply without that line tells the
+user the turn was not recorded; if `turn.py` fails, say so.
 
 ## Views
 
 ```bash
+python3 tools/sula_vector/skills/recall.py --project-root .                 # topic directory
+python3 tools/sula_vector/skills/recall.py --project-root . --topic <topic> # records in force under it
+python3 tools/sula_vector/skills/recall.py --project-root . <id-prefix>     # trace one record and its turn
+python3 tools/sula_vector/skills/recall.py --project-root . <term> ...  # any term, literal, incl. dialogue
 python3 tools/sula_vector/render.py . --view journal     # day by day
 python3 tools/sula_vector/render.py . --view effective   # judgments in force + supersession trail
 python3 tools/sula_vector/render.py . --view goals       # goals + verification status
 python3 tools/sula_vector/rules.py . log                 # every rule-sheet change and its why
-grep -il '<term>' fragments/*--transcript-*              # what was actually said
 ```
+
+To find something, pick a topic from the boot, list it, choose by meaning and
+trace what you choose. Search by terms when you know the words, and give the synonyms and
+both languages yourself. grep is for exact strings.
 
 ## Adopt into a new project
 
@@ -114,4 +136,5 @@ cp -r tools/sula_vector new-project/tools/sula_vector
 cp tools/sula_vector/AGENTS.md new-project/AGENTS.md
 ```
 
-The full convention is `docs/sula-vector-convention.md`.
+The full convention is `docs/sula-vector-convention.md` in the canonical
+repository, https://github.com/irihiyahnj/sula-vector.

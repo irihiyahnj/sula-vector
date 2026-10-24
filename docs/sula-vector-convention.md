@@ -8,7 +8,7 @@
 > The same shape works for code projects, governance projects, client-service
 > projects, and creative projects (e.g. video edits).
 
-Convention version: `1.3` (Sula Vector v1.4.0)
+Convention version: `1.5` (Sula Vector v1.6.0)
 
 v1.1 added **derived identity** (id and time come from the filename, never
 from hand-written frontmatter) and **three lanes** (a render-time projection of
@@ -27,6 +27,14 @@ reads are ignored; no fragment is rewritten.
 v1.4 adds **closing a turn**: every turn ends with `turn.py`, which keeps the
 turn's dialogue verbatim as a local, git-ignored `kind: transcript` fragment
 and prints the receipt the user sees. See [Closing a turn (1.4)](#closing-a-turn-14).
+
+v1.5 adds **sessions**: an optional `session` field signs a fragment with the
+session start the agent noted at boot. The turn mark counts only the current
+session's records since its last transcript, and a turn that recorded no
+judgment says so. A `topic` field files a record; the boot carries the topic
+directory computed from the records in force; annotations lend `topic` and
+`tags` to what they `refs`; the `recall` skill navigates by topic. See
+[Turn-mark for user visibility](#turn-mark-for-user-visibility).
 
 ---
 
@@ -175,6 +183,9 @@ replacing or closing it, so context links stay free of side effects.
 | `broken_ref`   | ids of dangling references this fragment acknowledges (see doctor)                       |
 | `witness_ignore` | extra ignore patterns for the `witness` skill                                          |
 | `author`       | who appended this fragment (human, agent name, system)                                   |
+| `topic`        | topic(s) the writer filed it under, English kebab-case in every project; the boot's topic directory is computed from them |
+| `session`      | the session start (ISO-8601) of the agent session that wrote it; ties a fragment to its turn |
+| `no_judgment`  | on a transcript: why its turn recorded no judgment                                       |
 
 Projects may add any other field. Fields that earlier releases read —
 `explains`, `explained_by`, `governs`, `review_after`, `review_when`, `scope`,
@@ -218,6 +229,8 @@ time:
 - Judgments in force = judgment-lane fragments that nothing supersedes
 - Current rule sheet = the `rules` fragment that nothing supersedes
 - Goal status = `goal` plus its `verification-fact` fragments via `refs`, or a fragment that `closes` it
+- A fragment's topics and search words = its own `topic` and `tags` plus those of every annotation in force that `refs` it
+- A fragment's turn = the first transcript after it signed with the same `session`; for an unsigned fragment, the nearest transcript after it, which readers must label inferred
 
 There is no separate "relations table" to keep in sync. There is only the
 fragment graph and a render call.
@@ -497,10 +510,13 @@ Step 2 produces a text block with:
 - **Open goals** — directions not yet met, with `done_when` and verifier;
 - **Recent judgments** — the titles of the last 10 judgments in force (rule
   sheets excluded);
-- **How to look things up** — `cat fragments/<id>.md`; a rule's source tag is a
-  filename prefix (`ls fragments | grep '^<tag>'`); `grep -ril '<term>'
-  fragments/` for anything else; and the commands to record a decision or
-  change a rule.
+- **Topics** — one line: each topic with its count over the records in force,
+  and how many have none;
+- **How to look things up** — the `recall` skill: `--topic` lists the records in
+  force under a topic, for the agent to choose by meaning; with an id prefix (a rule's source tag is one), a trace of
+  that record; with terms, literal matches across fragments and transcripts.
+  Then the commands to record a decision or change a rule, signed with the
+  session.
 
 If doctor finds problems, its report follows the block.
 
@@ -667,7 +683,8 @@ Skills are invoked by whatever the substrate already provides (cron,
 file-watchers, git hooks, agents, humans). Sula does not start, schedule,
 supervise, or install triggers for skills (B7).
 
-Two skills ship: `verifier-shell.py` (runs shell-command goal verifiers and
+Three skills ship: `recall.py` (read-only lookup: the standing list, traces,
+literal terms), `verifier-shell.py` (runs shell-command goal verifiers and
 emits `verification-fact` fragments) and `witness.py` (optional evidence for
 folders without git). The full skills contract is in
 `tools/sula_vector/skills/README.md`.
@@ -707,32 +724,45 @@ SULA_TURN
   reports that git would still track one. Judgments and the rule sheet stay in
   git as before; they must remain sufficient on their own, so no view depends
   on a transcript being present.
-- Transcripts are not in the boot, the journal or the turn mark. They are
-  searched (`grep -il '<term>' fragments/*--transcript-*`) and can be re-read
-  later to recover judgments nobody recorded.
+- Transcripts are not in the boot, the journal or the turn mark. `recall`
+  searches them and traces a judgment to the transcript of its turn; they can be
+  re-read later to recover judgments nobody recorded.
+- `--since` signs the transcript with the session (1.5). A signed transcript
+  ends its session's turn.
+- A turn should land its judgments while it happens. If the turn recorded none,
+  the agent passes `--no-judgment "<why>"`, kept on the transcript; without it
+  the mark ends with `[sula] ! no judgment this turn, and no --no-judgment
+  reason given`. The transcript is written either way.
 
 ## Turn-mark for user visibility
 
 The convention itself is silent (C5, C7). The agent protocol asks the agent to
 show its user a mark at the end of every turn; `turn.py --since` prints it
-after the receipt. The mark is generated from the existing `--since` filter:
+after the receipt. Since 1.5 the mark is this turn of this session: records
+signed with the session since its last signed transcript, plus unsigned
+records in that window, marked `?` because nothing can tell whose they are.
+Records another session signed never appear, so two agents working at once
+do not claim each other's work:
 
 ```
 $ python3 tools/sula_vector/render.py . --view changes-summary --since <session-start-ISO>
-[sula] +2 this turn:
+[sula] +3 this turn:
   + decision           对 Acme 采用月度交付节奏
   ✓ verification-fact  PASS  goal-q3-renewal
+  ? fact               合同已签
+  ? = 1 unsigned (no --session), possibly another session's
 ```
 
 If nothing else was appended, `render.py --view changes-summary` prints
 `[sula] no changes` and `turn.py` prints only the receipt.
 
 The session-start timestamp is **host-local** state, not Sula state. Sula
-remains stateless. The agent notes the time at boot and calls
-`--view changes-summary --since ...` once per turn.
+remains stateless. The agent notes the time at boot, passes it with every
+write, and the fragments carry it; the turn boundary is the session's last
+transcript, itself a fragment.
 
 This pattern is principle-compatible:
-- B2 (no implicit state): the timestamp lives in the host, not in Sula
+- B2 (no implicit state): the timestamp lives in the host and on the fragments it signs
 - C5 (minimal interaction): one render call, one block out
 - C7 (no churn): silent when nothing happened
 
@@ -770,10 +800,11 @@ which fields they give meaning to. Bumps are rare. Adding a recommended kind, a
 new view, or a new optional field is **not** a bump — projects add those
 locally without coordination.
 
-Current convention version: `1.4` (Sula Vector v1.5.0, 2026-10-10). Every
-1.0–1.3 fragment still parses; fields 1.3 no longer reads are ignored. Readers
+Current convention version: `1.5` (Sula Vector v1.6.0, 2026-10-24). Every
+1.0–1.4 fragment still parses; fields 1.3 no longer reads are ignored. Readers
 must accept the microsecond filenames introduced in 1.2, the `sha256` header
-line, and must keep `kind: transcript` out of the boot.
+line, must keep `kind: transcript` out of the boot, and must treat a fragment
+without `session` as unsigned, never as belonging to the reader's session.
 
 See `tools/sula_vector/RELEASE-NOTES.md` for release notes and the upgrade
 path.

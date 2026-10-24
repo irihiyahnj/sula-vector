@@ -12,9 +12,9 @@ Every view is a pure function of that folder. No daemon, no state directory,
 no vendor. The same shape covers a code repository, a synced folder of
 company documents, and a personal project.
 
-**Current release: v1.4.0** (2026-10-05), the stable line. Convention `1.3`;
-every older fragment still parses.
-[Changes and upgrade steps](tools/sula_vector/RELEASE-NOTES.md#v140--the-boot-carries-the-rules-stable)
+**Current release: v1.6.0** (2026-10-24). Convention `1.5`; every older
+fragment still parses.
+[Changes and upgrade steps](tools/sula_vector/RELEASE-NOTES.md#v160--recall-by-meaning-and-each-turn-knows-whose-it-is)
 
 ---
 
@@ -27,7 +27,14 @@ runs one command and gets:
    with a pointer to the fragment that holds the reason.
 2. **Open goals**, each with the condition that closes it and its verifier.
 3. **The last ten judgments**, as titles.
-4. **How to look up** anything else in the append-only history.
+4. **A topic directory**, one line computed from the records in force, and how
+   to look up anything else: `skills/recall.py` lists the records under a topic
+   for the agent to choose by meaning, traces any record to what replaced it,
+   the rules citing it and the dialogue of its turn, and matches literal terms.
+   Writers file each record under a topic once; nothing is indexed or stored.
+
+Every turn ends with `turn.py`, which keeps the dialogue on the machine and
+prints what this session recorded this turn — or that it recorded no judgment.
 
 It is a memory and rationale layer, not a project operating system. It does not
 schedule, assign, track effort or coordinate actors; git, your sync service and
@@ -59,6 +66,11 @@ change moved.
 - **Only exams were measured**, on one project, by one model family. The effect
   on real work is inferred, not observed.
 - **The tooling detects a missing or malformed sheet, never a wrong rule.**
+- **Recall is untested on readers.** The list, traces and term search are
+  mechanism-tested; whether agents answer history questions better with them
+  than with grep has not been measured.
+- **Recording a judgment still depends on the agent.** The turn mark makes a
+  missing one visible to the user; it cannot write it.
 
 ## Quick start
 

@@ -17,6 +17,11 @@ reader of a transcript is a model, so nothing here parses a host's log.
 
 Transcripts are local: the project's .gitignore excludes them, and the turn is
 refused if git would still pick one up.
+
+`--since` also signs the transcript with the session, which ends the turn: the
+next mark of the same session starts after it. A turn that recorded no judgment
+signed by its session says so in the mark, with the reason given to
+`--no-judgment` or a warning.
 """
 
 from __future__ import annotations
@@ -30,7 +35,8 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from append import append_fragment
-from render import TRANSCRIPT_KIND, load_fragments, render_changes_summary_block, filter_fragments
+from render import (TRANSCRIPT_KIND, lane_of, load_fragments, render_changes_summary_block,
+                    session_of, turn_fragments)
 
 IGNORE_LINE = "fragments/*--transcript-*"
 REDACTED = "[REDACTED]"
@@ -128,9 +134,15 @@ def summary_line(text: str) -> str:
 def main(argv: list[str] | None = None) -> int:
     p = argparse.ArgumentParser(description="Close a turn: keep its dialogue, redacted and local.")
     p.add_argument("project_root")
-    p.add_argument("--since", help="session start; also prints what was recorded since then")
+    p.add_argument("--since", help="session start; signs the transcript and prints this turn's mark")
+    p.add_argument("--no-judgment", default="", metavar="WHY",
+                   help="why this turn recorded no judgment (needs --since)")
     p.add_argument("--author", default="")
     args = p.parse_args(argv)
+    args.since = (args.since or "").strip()
+    reason = " ".join(args.no_judgment.split())
+    if reason and not args.since:
+        p.error("--no-judgment needs --since: without the session the turn cannot be told apart")
 
     root = Path(args.project_root).resolve()
     fragments_dir = root / "fragments"
@@ -141,11 +153,16 @@ def main(argv: list[str] | None = None) -> int:
     if not text:
         print("nothing to record: pass the user's message and your reply on stdin", file=sys.stderr)
         return 2
+    turn = turn_fragments(load_fragments(fragments_dir), args.since) if args.since else []
+    # Only this session's own signature counts: an unsigned judgment in the
+    # window may be another agent's, and counting it is the cross-claim this mark exists to stop.
+    judged = any(lane_of(f) == "judgment" and session_of(f) == args.since for f in turn)
     try:
         where = ensure_local_only(root)
         body, hidden = redact(text)
         fields = {"kind": TRANSCRIPT_KIND, "summary": summary_line(body), "author": args.author,
-                  "redacted": hidden}
+                  "session": args.since, "redacted": hidden,
+                  "no_judgment": "" if judged else reason}
         append_fragment(fragments_dir, "transcript", fields, body)
     except (OSError, ValueError, RuntimeError) as exc:
         print(f"[sula] turn NOT recorded: {exc}", file=sys.stderr)
@@ -154,10 +171,11 @@ def main(argv: list[str] | None = None) -> int:
     tail = f", {hidden} secret(s) redacted" if hidden else ""
     print(f"[sula] turn recorded ({len(body)} chars, {where}, stays on this machine{tail})")
     if args.since:
-        recorded = [f for f in filter_fragments(load_fragments(fragments_dir), since=args.since)
-                    if f.kind not in {"principle", TRANSCRIPT_KIND}]
-        if recorded:
-            print(render_changes_summary_block(recorded))
+        if turn:
+            print(render_changes_summary_block(turn, args.since))
+        if not judged:
+            print(f"[sula] no judgment this turn: {reason}" if reason
+                  else "[sula] ! no judgment this turn, and no --no-judgment reason given")
     return 0
 
 

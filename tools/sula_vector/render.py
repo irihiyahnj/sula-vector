@@ -2,7 +2,8 @@
 """Sula vector renderer.
 
 Pure function from a folder of typed text fragments to a project view.
-Standard library only. See ../../docs/sula-vector-convention.md for the spec.
+Standard library only. The spec is docs/sula-vector-convention.md in the
+canonical repository.
 
 Identity is derived from the filename, never from hand-written frontmatter:
 a fragment cannot carry a wrong id or a wrong timestamp, and no fragment is
@@ -21,7 +22,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, Iterable
 
-CONVENTION_VERSION = "1.4"
+CONVENTION_VERSION = "1.5"
 
 TIER_ORDER = ["highest", "invariant", "aesthetic", "discipline", "anti-pattern"]
 PROJECT_TIER = "project"
@@ -406,6 +407,66 @@ def closure_map(frags: Iterable[Fragment]) -> dict[str, list[str]]:
 # titles knows something happened but not what it must now do.
 
 
+def standing(frags: Iterable[Fragment]) -> list[Fragment]:
+    """Judgments and directions nothing supersedes.
+
+    Rule-sheet versions, transcripts and annotations aside: an annotation is
+    about other records and is reached through them.
+    """
+    frags = list(frags)
+    superseded = supersession_map(frags)
+    return [
+        f for f in frags
+        if lane_of(f) in {"judgment", "direction"}
+        and f.kind not in {"rules", TRANSCRIPT_KIND, "annotation"}
+        and f.id not in superseded
+    ]
+
+
+def _lent(frags: list[Fragment], key: str) -> dict[str, list[str]]:
+    """Each fragment's own `key` values plus those of every annotation in force that refs it, lowercased."""
+    superseded = supersession_map(frags)
+
+    def values(f: Fragment) -> list[str]:
+        raw = f.tags if key == "tags" else f.id_list(key)
+        return [str(v).strip().lower() for v in raw if str(v).strip()]
+
+    out = {f.id: list(dict.fromkeys(values(f))) for f in frags}
+    for note in frags:
+        if note.kind != "annotation" or note.id in superseded:
+            continue
+        for target in note.refs:
+            for value in values(note):
+                if target in out and value not in out[target]:
+                    out[target].append(value)
+    return out
+
+
+def topics_of(frags: Iterable[Fragment]) -> dict[str, list[str]]:
+    return _lent(list(frags), "topic")
+
+
+def search_words_of(frags: Iterable[Fragment]) -> dict[str, list[str]]:
+    """Topics and tags together: everything a writer gave for finding the fragment again."""
+    frags = list(frags)
+    topic, tags = _lent(frags, "topic"), _lent(frags, "tags")
+    return {fid: list(dict.fromkeys(topic[fid] + tags[fid])) for fid in topic}
+
+
+def topics(frags: Iterable[Fragment]) -> tuple[list[tuple[str, int]], int]:
+    """Topic directory over the standing records: (topic, count) by count then name, and how many have none."""
+    frags = list(frags)
+    assigned = topics_of(frags)
+    counts: dict[str, int] = {}
+    none = 0
+    for f in standing(frags):
+        if not assigned[f.id]:
+            none += 1
+        for topic in assigned[f.id]:
+            counts[topic] = counts.get(topic, 0) + 1
+    return sorted(counts.items(), key=lambda kv: (-kv[1], kv[0])), none
+
+
 def rules_heads(frags: Iterable[Fragment]) -> list[Fragment]:
     """Rule-sheet versions nothing supersedes. One is normal; more is a fork."""
     sheets = [f for f in frags if f.kind == "rules"]
@@ -589,6 +650,30 @@ def view_doctor(frags: list[Fragment], problems: list[Problem]) -> dict[str, Any
     }
 
 
+def session_of(f: Fragment) -> str:
+    return str(f.get("session", "")).strip()
+
+
+def turn_fragments(frags: Iterable[Fragment], session: str) -> list[Fragment]:
+    """What the current turn of `session` has recorded so far.
+
+    The turn starts at the session start or at the last transcript the session
+    signed, whichever is later. Fragments another session signed are left out;
+    unsigned ones in the window stay, because nothing can tell whose they are.
+    """
+    frags = list(frags)
+    start = time_key(session)
+    for f in frags:
+        if f.kind == TRANSCRIPT_KIND and session_of(f) == session:
+            start = max(start, time_key(f.time))
+    return [
+        f for f in frags
+        if f.kind not in {"principle", TRANSCRIPT_KIND}
+        and time_key(f.time) >= start
+        and session_of(f) in {"", session}
+    ]
+
+
 def view_changes_summary(frags: list[Fragment]) -> dict[str, Any]:
     by_kind: dict[str, int] = {}
     fragment_entries: list[dict[str, Any]] = []
@@ -599,6 +684,7 @@ def view_changes_summary(frags: list[Fragment]) -> dict[str, Any]:
             "time": f.time,
             "kind": f.kind,
             "lane": lane_of(f),
+            "session": session_of(f),
             "summary": _summarize(f, max_chars=120),
             "refs": list(f.refs),
         }
@@ -612,13 +698,17 @@ def view_changes_summary(frags: list[Fragment]) -> dict[str, Any]:
     }
 
 
-def render_changes_summary_block(frags: list[Fragment]) -> str:
+def render_changes_summary_block(frags: list[Fragment], session: str = "") -> str:
     if not frags:
         return "[sula] no changes"
     width = max(max(len(f.kind) for f in frags), len("verification-fact"))
     lines = [f"[sula] +{len(frags)} this turn:"]
+    unsigned = 0
     for f in frags:
         marker = "+"
+        if session and not session_of(f):
+            marker = "?"
+            unsigned += 1
         summary = _summarize(f, max_chars=120)
         if f.kind == "verification-fact":
             passed = f.get("passed") in {True, "true"}
@@ -627,6 +717,8 @@ def render_changes_summary_block(frags: list[Fragment]) -> str:
             short_target = target.split("--", 1)[-1] if "--" in target else target
             summary = f"{'PASS' if passed else 'FAIL'}  {short_target}"
         lines.append(f"  {marker} {f.kind.ljust(width)}  {summary}")
+    if unsigned:
+        lines.append(f"  ? = {unsigned} unsigned (no --session), possibly another session's")
     return "\n".join(lines)
 
 
@@ -744,21 +836,35 @@ def render_for_agent(frags: list[Fragment], project_name: str = "") -> str:
             lines.append(f"- [{f.time}] {f.kind} {f.id}: {_summarize(f)}")
         lines.append("")
 
+    directory, untagged = topics(frags)
+    lines.append(f"## Topics ({len(standing(frags))} records in force; count per topic)")
+    entries = [f"{tag} {count}" for tag, count in directory]
+    if untagged:
+        entries.append(f"(no topic) {untagged}")
+    lines.append(" · ".join(entries) if entries else "- (none)")
+    lines.append("")
+
     lines.append("## How to look things up and act")
     lines.append(
         "The reasons behind the rules and all history are in fragments/, append-only. "
-        "Read one with `cat fragments/<id>.md`; a rule's bracketed tag is a filename prefix "
-        "(`ls fragments | grep '^<tag>'`); search a topic with `grep -ril '<term>' fragments/`."
+        "`python3 tools/sula_vector/skills/recall.py --project-root . --topic <topic>` lists the "
+        "records in force under a topic above, one line each; pick by meaning. Give an id prefix "
+        "instead (a rule's bracketed tag is one) to trace a record: what it replaced, what replaced "
+        "it, the rules citing it, the dialogue of its turn. Give terms to match any of them literally "
+        "across every fragment and transcript, supplying synonyms and both languages yourself. "
+        "grep stays for exact strings."
     )
     if transcripts:
         lines.append(
             f"The dialogue of past turns is in {transcripts} transcript fragments, local to this "
-            "machine: `grep -il '<term>' fragments/*--transcript-*` finds what was actually said."
+            "machine; recall searches them with the rest."
         )
     lines.append(
-        "Record a decision with `note.py . --kind decision --title \"<one line>\" \"<why>\"`. "
-        "Change a rule with `rules.py . add|edit|remove ... --why \"<why>\"`. Never edit a fragment. "
-        "Close every turn with `turn.py` as AGENTS.md describes."
+        "Record a decision with `note.py . --kind decision --session <session_start> --topic "
+        "<english-kebab-topic> --tags \"<search words>\" --title \"<one line>\" \"<why>\"`; reuse a topic above "
+        "before making a new one. "
+        "Change a rule with `rules.py . add|edit|remove ... --session <session_start> --why \"<why>\"`. "
+        "Never edit a fragment. Close every turn with `turn.py` as AGENTS.md describes."
     )
     return "\n".join(lines).rstrip() + "\n"
 
@@ -854,12 +960,15 @@ def main(argv: list[str] | None = None) -> int:
     selected = {f.id for f in filtered}
 
     if args.view == "changes-summary":
-        activity = [f for f in filtered if f.kind not in {"principle", TRANSCRIPT_KIND}]
+        if args.since:
+            activity = [f for f in turn_fragments(frags, args.since) if f.id in selected]
+        else:
+            activity = [f for f in filtered if f.kind not in {"principle", TRANSCRIPT_KIND}]
         if args.json:
             json.dump(view_changes_summary(activity), sys.stdout, ensure_ascii=False)
             sys.stdout.write("\n")
         else:
-            sys.stdout.write(render_changes_summary_block(activity) + "\n")
+            sys.stdout.write(render_changes_summary_block(activity, args.since or "") + "\n")
         return 0
     if args.view == "goals":
         result: Any = [row for row in view_goals(frags) if row["goal"]["id"] in selected]

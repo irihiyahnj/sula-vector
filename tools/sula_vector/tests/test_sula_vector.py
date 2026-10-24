@@ -524,6 +524,8 @@ class TestFleetUpdate(unittest.TestCase):
         for rel in RETIRED_FILES:
             self.assertFalse((TOOLS / rel).exists(), rel)
         self.assertIn("rules.py", TOOLING_FILES)
+        shipped = {f"skills/{p.name}" for p in (TOOLS / "skills").glob("*.py")}
+        self.assertLessEqual(shipped, set(TOOLING_FILES), "a skill the update would never install")
 
 
 class TestVerifierShellSkill(unittest.TestCase):
@@ -583,8 +585,8 @@ class TestVerifierShellSkill(unittest.TestCase):
 
 
 class TestConventionVersion(unittest.TestCase):
-    def test_version_is_one_four(self):
-        self.assertEqual(CONVENTION_VERSION, "1.4")
+    def test_version_is_one_five(self):
+        self.assertEqual(CONVENTION_VERSION, "1.5")
 
 
 class TestDerivedIdentity(unittest.TestCase):

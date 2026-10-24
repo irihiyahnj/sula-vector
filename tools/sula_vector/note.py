@@ -27,6 +27,8 @@ from append import append_fragment, fragment_text
 from render import LANE_BY_KIND, LANES, is_symbolic_ref, load_fragments
 
 SLUG_KEEP = re.compile(r"[^a-z0-9]+")
+# One fixed language for topics, so writers in any language land on the same names.
+TOPIC_NAME = re.compile(r"^[a-z0-9]+(?:-[a-z0-9]+)*$")
 
 RESERVED_FIELD_KEYS = {
     "id",
@@ -43,6 +45,9 @@ RESERVED_FIELD_KEYS = {
     "pointer",
     "author",
     "summary",
+    "session",
+    "no_judgment",
+    "topic",
 }
 
 
@@ -78,7 +83,9 @@ def main(argv: list[str] | None = None) -> int:
     # Repeatable single-value flags, comma-splittable. `nargs="*"` would swallow
     # the positional body.
     p.add_argument("--refs", action="append", default=[])
-    p.add_argument("--tags", action="append", default=[])
+    p.add_argument("--topic", action="append", default=[],
+                   help="topic(s) from the boot's directory, English kebab-case; a new one only when none fits")
+    p.add_argument("--tags", action="append", default=[], help="search words: synonyms, names, both languages")
     p.add_argument("--closes", action="append", default=[], help="ids of directions this closes")
     p.add_argument(
         "--supersedes", action="append", default=[], help="ids of judgments this replaces"
@@ -96,6 +103,7 @@ def main(argv: list[str] | None = None) -> int:
     )
     p.add_argument("--pointer", default="", help="path or URL of the artifact")
     p.add_argument("--author", default="")
+    p.add_argument("--session", default="", help="session start, as passed to turn.py --since")
     p.add_argument("--done-when", default="", help="goal success condition")
     p.add_argument("--verifier", default="", help="e.g. 'shell: python3 -m unittest ...'")
     p.add_argument("--field", action="append", default=[], metavar="KEY=VALUE")
@@ -126,6 +134,11 @@ def main(argv: list[str] | None = None) -> int:
 
     args.refs = items(args.refs)
     args.tags = items(args.tags)
+    args.topic = items(args.topic)
+    bad = [t for t in args.topic if not TOPIC_NAME.match(t)]
+    if bad:
+        print("a topic is an English kebab-case name (e.g. cellular-4g): " + ", ".join(bad), file=sys.stderr)
+        return 2
     args.closes = items(args.closes)
     args.supersedes = items(args.supersedes)
     args.broken_ref = items(args.broken_ref)
@@ -197,6 +210,7 @@ def main(argv: list[str] | None = None) -> int:
     if args.lane:
         fields["lane"] = args.lane
     fields["refs"] = list(args.refs)
+    fields["topic"] = list(args.topic)
     fields["tags"] = list(args.tags)
     fields["closes"] = list(args.closes)
     fields["supersedes"] = list(args.supersedes)
@@ -207,6 +221,8 @@ def main(argv: list[str] | None = None) -> int:
         fields["pointer"] = args.pointer
     if args.author:
         fields["author"] = args.author
+    if args.session.strip():
+        fields["session"] = args.session.strip()
     if args.done_when:
         fields["done_when"] = args.done_when
     if args.verifier:

@@ -16,6 +16,8 @@ from render import load_report, render_for_agent, view_doctor, view_journal
 from turn import IGNORE_LINE, REDACTED, redact
 
 HAS_GIT = shutil.which("git") is not None
+SESSION = "2000-01-01T00:00:00Z"
+OTHER = "2000-01-01T00:00:01Z"
 
 
 class RedactTest(unittest.TestCase):
@@ -170,6 +172,71 @@ class TurnTest(unittest.TestCase):
                                "--view", "changes-summary", "--since", "2000-01-01T00:00:00Z"],
                               capture_output=True, text=True).stdout
         self.assertIn("[sula] +1 this turn:", mark)
+
+    def note(self, *args):
+        return subprocess.run([sys.executable, str(TOOLS / "note.py"), str(self.root), *args],
+                              capture_output=True, text=True)
+
+    def test_mark_is_this_sessions_turn_only(self):
+        self.note("--kind", "decision", "--session", SESSION, "--title", "本会话的决定", "why")
+        self.note("--kind", "decision", "--session", OTHER, "--title", "另一个会话的", "why")
+        self.note("--kind", "decision", "--title", "没签名的", "why")
+        run = self.turn("## User\nhi\n## Reply\nok", "--since", SESSION)
+        self.assertEqual(run.returncode, 0, run.stderr)
+        self.assertIn("[sula] +2 this turn:", run.stdout)
+        self.assertRegex(run.stdout, r"\+ decision +本会话的决定")
+        self.assertRegex(run.stdout, r"\? decision +没签名的")
+        self.assertIn("1 unsigned", run.stdout)
+        self.assertNotIn("另一个会话的", run.stdout)
+        [path] = self.transcripts()
+        self.assertIn(f"session: {SESSION}", path.read_text(encoding="utf-8"))
+
+    def test_next_turn_starts_after_the_previous_transcript(self):
+        self.note("--kind", "decision", "--session", SESSION, "--title", "第一轮的决定", "why")
+        self.assertEqual(self.turn("one", "--since", SESSION).returncode, 0)
+        self.note("--kind", "decision", "--session", SESSION, "--title", "第二轮的决定", "why")
+        out = self.turn("two", "--since", SESSION).stdout
+        self.assertIn("[sula] +1 this turn:", out)
+        self.assertIn("第二轮的决定", out)
+        self.assertNotIn("第一轮的决定", out)
+        mark = subprocess.run([sys.executable, str(TOOLS / "render.py"), str(self.root),
+                               "--view", "changes-summary", "--since", SESSION],
+                              capture_output=True, text=True).stdout
+        self.assertEqual(mark.strip(), "[sula] no changes")
+
+    def test_a_turn_without_judgment_says_so(self):
+        self.note("--kind", "fact", "--session", SESSION, "--title", "跑了测试", "ok")
+        out = self.turn("chat", "--since", SESSION).stdout
+        self.assertIn("[sula] +1 this turn:", out)
+        self.assertIn("[sula] ! no judgment this turn", out)
+        out = self.turn("chat", "--since", SESSION, "--no-judgment", "纯讨论，没有改动").stdout
+        self.assertIn("[sula] no judgment this turn: 纯讨论，没有改动", out)
+        texts = [p.read_text(encoding="utf-8") for p in self.transcripts()]
+        self.assertEqual(sum("no_judgment: 纯讨论，没有改动" in t for t in texts), 1)
+
+    def test_an_unsigned_judgment_is_not_this_sessions(self):
+        self.note("--kind", "decision", "--title", "也许是别人的", "why")
+        out = self.turn("x", "--since", SESSION).stdout
+        self.assertRegex(out, r"\? decision +也许是别人的")
+        self.assertIn("[sula] ! no judgment this turn", out)
+
+    def test_a_recorded_judgment_drops_the_reason(self):
+        sheet = self.root / "sheet.md"
+        sheet.write_text("## 部署\n- 只从 main 部署 [2000-01-01T00-00-00Z]\n", encoding="utf-8")
+        rules = subprocess.run([sys.executable, str(TOOLS / "rules.py"), str(self.root), "set",
+                                "--from", str(sheet), "--why", "first", "--session", SESSION],
+                               capture_output=True, text=True)
+        self.assertEqual(rules.returncode, 0, rules.stderr)
+        out = self.turn("x", "--since", SESSION, "--no-judgment", "不该出现").stdout
+        self.assertRegex(out, r"\+ rules +first")
+        self.assertNotIn("no judgment", out)
+        [path] = self.transcripts()
+        self.assertNotIn("不该出现", path.read_text(encoding="utf-8"))
+
+    def test_no_judgment_needs_since(self):
+        run = self.turn("x", "--no-judgment", "why")
+        self.assertEqual(run.returncode, 2)
+        self.assertEqual(self.transcripts(), [])
 
     def test_note_refuses_transcripts(self):
         run = subprocess.run([sys.executable, str(TOOLS / "note.py"), str(self.root),

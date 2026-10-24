@@ -70,6 +70,7 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--from", dest="source", default="", help="sheet file for set")
     p.add_argument("--why", default="", help="reason for the change; required for every write")
     p.add_argument("--refs", action="append", default=[], help="fragment ids behind this change")
+    p.add_argument("--session", default="", help="session start, as passed to turn.py --since")
     args, extra = p.parse_known_args(argv)
     # Python <= 3.12 cannot match a trailing optional positional after options,
     # so `add --section X --why Y "<rule>"` leaves the rule unparsed there.
@@ -156,12 +157,15 @@ def main(argv: list[str] | None = None) -> int:
         return 0
 
     try:
-        target = append_fragment(fragments_dir, "rules", {
+        fields = {
             "kind": "rules",
             "summary": " ".join(args.why.split()),
             "refs": refs,
             "supersedes": [h.id for h in heads],
-        }, new)
+        }
+        if args.session.strip():
+            fields["session"] = args.session.strip()
+        target = append_fragment(fragments_dir, "rules", fields, new)
     except (OSError, ValueError) as exc:
         print(f"cannot append the rule sheet: {exc}", file=sys.stderr)
         return 2
